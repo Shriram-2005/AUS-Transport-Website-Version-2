@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  allowedDevOrigins: ['10.22.39.175', '10.22.39.175:3000'],
+  experimental: {
+    agentUpgrade: 'security',
+  },
 };
 
 export default nextConfig;
