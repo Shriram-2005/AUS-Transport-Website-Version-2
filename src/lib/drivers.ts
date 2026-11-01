@@ -121,7 +121,7 @@ export function calculateDriverMonthlyStats(driver: Driver, bills: BillData[]): 
       if (trip.enabled === false) continue;
 
       const isMatch =
-        (trip.driverId && trip.driverId === driverId) ||
+        (trip.driverId && String(trip.driverId) === String(driverId)) ||
         (trip.driverName && trip.driverName.trim().toLowerCase() === driverNameClean);
 
       if (!isMatch) continue;
@@ -138,21 +138,22 @@ export function calculateDriverMonthlyStats(driver: Driver, bills: BillData[]): 
         const tripSalary = runningKm * tripRate;
 
         const dateStr = trip.date || bill.date;
-        const parsedMonth = parseMonthFromDate(dateStr);
-        if (parsedMonth) {
-          if (!monthMap[parsedMonth.key]) {
-            monthMap[parsedMonth.key] = {
-              monthKey: parsedMonth.key,
-              monthLabel: parsedMonth.label,
-              totalKm: 0,
-              totalSalary: 0,
-              tripCount: 0,
-            };
-          }
-          monthMap[parsedMonth.key].totalKm += runningKm;
-          monthMap[parsedMonth.key].totalSalary += tripSalary;
-          monthMap[parsedMonth.key].tripCount += 1;
+        const parsedMonth = parseMonthFromDate(dateStr) || {
+          key: new Date().toISOString().substring(0, 7),
+          label: 'Current Period',
+        };
+        if (!monthMap[parsedMonth.key]) {
+          monthMap[parsedMonth.key] = {
+            monthKey: parsedMonth.key,
+            monthLabel: parsedMonth.label,
+            totalKm: 0,
+            totalSalary: 0,
+            tripCount: 0,
+          };
         }
+        monthMap[parsedMonth.key].totalKm += runningKm;
+        monthMap[parsedMonth.key].totalSalary += tripSalary;
+        monthMap[parsedMonth.key].tripCount += 1;
       }
     }
   }

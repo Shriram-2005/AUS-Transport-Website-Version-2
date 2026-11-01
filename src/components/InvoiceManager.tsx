@@ -38,10 +38,11 @@ import {
   AlertTriangle,
   ChevronDown,
   RotateCcw,
+  User,
 } from 'lucide-react';
 import { CustomDatePicker } from './CustomDatePicker';
 import { getStoredVehicles, saveStoredVehicles, updateVehicleKmFromBill, VEHICLES_CHANGE_EVENT, Vehicle } from '@/lib/vehicles';
-import { getStoredDrivers, DRIVERS_CHANGE_EVENT, Driver } from '@/lib/drivers';
+import { getStoredDrivers, saveStoredDrivers, DRIVERS_CHANGE_EVENT, Driver } from '@/lib/drivers';
 import { initializeIndianPlaces, searchIndianPlaces, IndianPlace } from '@/lib/indianPlaces';
 import { getStoredInvoices, saveStoredInvoices, INVOICES_CHANGE_EVENT } from '@/lib/invoices';
 import {
@@ -571,10 +572,58 @@ export function InvoiceManager() {
     }
   }, []);
 
-  // Load from Supabase on mount
+  // Fetch drivers from Supabase
+  const fetchDrivers = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.from('drivers').select('*').order('name', { ascending: true });
+      if (!error && data && data.length > 0) {
+        const loaded: Driver[] = data.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          phone: d.phone || '',
+          licenseNumber: d.license_number || '',
+          ratePerKm: Number(d.rate_per_km) || 2.50,
+          status: (d.status === 'inactive' || d.active === false) ? 'inactive' : 'active',
+          joinedDate: d.joined_date || d.created_at || new Date().toISOString(),
+        }));
+        setAvailableDrivers(loaded);
+        saveStoredDrivers(loaded);
+      }
+    } catch (err) {
+      console.error('Error loading drivers from Supabase in InvoiceManager:', err);
+    }
+  }, []);
+
+  // Fetch vehicles from Supabase
+  const fetchVehicles = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.from('vehicles').select('*').order('registration_number', { ascending: true });
+      if (!error && data && data.length > 0) {
+        const loaded: Vehicle[] = data.map((v: any) => ({
+          id: v.id,
+          registrationNumber: v.registration_number,
+          currentKm: Number(v.current_km) || 0,
+          odometerReading: Number(v.current_km) || 0,
+          status: v.status || 'active',
+          createdAt: v.created_at || new Date().toISOString(),
+          updatedAt: v.updated_at || new Date().toISOString(),
+        }));
+        setAvailableVehicles(loaded);
+        saveStoredVehicles(loaded);
+      }
+    } catch (err) {
+      console.error('Error loading vehicles from Supabase in InvoiceManager:', err);
+    }
+  }, []);
+
+  // Load invoices, drivers, and vehicles from Supabase on mount
   useEffect(() => {
     fetchInvoices();
-  }, [fetchInvoices]);
+    fetchDrivers();
+    fetchVehicles();
+  }, [fetchInvoices, fetchDrivers, fetchVehicles]);
 
   // Core save function: handles both manual and silent 5s background auto-save
   const saveBillAsync = useCallback(
@@ -737,6 +786,25 @@ export function InvoiceManager() {
   }, []);
 
   const currentTotal = useMemo(() => calculateBillTotal(currentBill), [currentBill]);
+
+  // Aggregate Driver Salaries for the active bill
+  const billDriverSummaries = useMemo(() => {
+    const map: Record<string, { name: string; totalKm: number; rate: number; totalSalary: number; tripCount: number }> = {};
+    for (const t of currentBill.trips.slice(0, currentBill.visibleTrips)) {
+      const name = t.driverName || (availableDrivers.find((d) => d.id === t.driverId)?.name) || '';
+      if (!name) continue;
+      const runningKm = Math.max(0, (Number(t.closingKm) || 0) - (Number(t.startingKm) || 0));
+      const rate = Number(t.driverRate) || 0;
+      const salary = runningKm * rate;
+      if (!map[name]) {
+        map[name] = { name, totalKm: 0, rate, totalSalary: 0, tripCount: 0 };
+      }
+      map[name].totalKm += runningKm;
+      map[name].totalSalary += salary;
+      map[name].tripCount += 1;
+    }
+    return Object.values(map);
+  }, [currentBill.trips, currentBill.visibleTrips, availableDrivers]);
 
   // Sync words if in auto mode
   useEffect(() => {
@@ -1122,38 +1190,60 @@ export function InvoiceManager() {
   // Editor Actions (matching reference invoice.js)
   const activeTrip = currentBill.trips[currentBill.activeTrip - 1] || currentBill.trips[0];
 
-  const updateActiveTripField = (field: keyof TripItem, value: any) => {
-    const updatedTrips = [...currentBill.trips];
-    const trip = { ...updatedTrips[currentBill.activeTrip - 1], [field]: value };
+  const updateActiveTripFields = useCallback((updates: Partial<TripItem>) => {
+    setCurrentBill((prev) => {
+      const activeIdx = (prev.activeTrip || 1) - 1;
+      const updatedTrips = [...prev.trips];
+      const currentTrip = updatedTrips[activeIdx] || updatedTrips[0];
+      const mergedTrip: TripItem = { ...currentTrip, ...updates };
 
-    if (field === 'startingKm' || field === 'closingKm' || field === 'rate' || field === 'dcNo') {
-      const parsedNum = parseFloat(value) || 0;
-      trip[field] = parsedNum;
-      if (field === 'closingKm' && currentBill.vehicleNumber && parsedNum > 0) {
-        updateVehicleKmFromBill(currentBill.vehicleNumber, parsedNum);
+      if (updates.startingKm !== undefined) {
+        mergedTrip.startingKm = parseFloat(String(updates.startingKm)) || 0;
       }
-    } else if (field === 'date') {
-      trip[field] = value;
-    } else if (field === 'itemQuantity') {
-      trip[field] = value;
-      if (trip.itemName) {
-        trip.particulars = value ? `${trip.itemName} - ${value}` : trip.itemName;
+      if (updates.closingKm !== undefined) {
+        const parsedClosing = parseFloat(String(updates.closingKm)) || 0;
+        mergedTrip.closingKm = parsedClosing;
+        if (prev.vehicleNumber && parsedClosing > 0) {
+          updateVehicleKmFromBill(prev.vehicleNumber, parsedClosing);
+        }
       }
-    }
+      if (updates.rate !== undefined) {
+        mergedTrip.rate = parseFloat(String(updates.rate)) || 0;
+      }
+      if (updates.dcNo !== undefined) {
+        mergedTrip.dcNo = updates.dcNo;
+      }
+      if (updates.driverRate !== undefined) {
+        mergedTrip.driverRate = parseFloat(String(updates.driverRate)) || 0;
+      }
+      if (updates.itemQuantity !== undefined && mergedTrip.itemName) {
+        mergedTrip.particulars = updates.itemQuantity ? `${mergedTrip.itemName} - ${updates.itemQuantity}` : mergedTrip.itemName;
+      }
 
-    updatedTrips[currentBill.activeTrip - 1] = trip;
-    setCurrentBill((prev) => ({ ...prev, trips: updatedTrips }));
-  };
+      updatedTrips[activeIdx] = mergedTrip;
+      return { ...prev, trips: updatedTrips };
+    });
+  }, []);
 
-  const selectParticular = (item: string) => {
-    const updatedTrips = [...currentBill.trips];
-    const trip = { ...updatedTrips[currentBill.activeTrip - 1] };
-    trip.itemName = item;
-    trip.particulars = trip.itemQuantity ? `${item} - ${trip.itemQuantity}` : item;
-    updatedTrips[currentBill.activeTrip - 1] = trip;
-    setCurrentBill((prev) => ({ ...prev, trips: updatedTrips }));
+  const updateActiveTripField = useCallback((field: keyof TripItem, value: any) => {
+    updateActiveTripFields({ [field]: value });
+  }, [updateActiveTripFields]);
+
+  const selectParticular = useCallback((item: string) => {
+    setCurrentBill((prev) => {
+      const activeIdx = (prev.activeTrip || 1) - 1;
+      const updatedTrips = [...prev.trips];
+      const currentTrip = updatedTrips[activeIdx] || updatedTrips[0];
+      const newParticulars = currentTrip.itemQuantity ? `${item} - ${currentTrip.itemQuantity}` : item;
+      updatedTrips[activeIdx] = {
+        ...currentTrip,
+        itemName: item,
+        particulars: newParticulars,
+      };
+      return { ...prev, trips: updatedTrips };
+    });
     setParticularDropdownOpen(false);
-  };
+  }, []);
 
   const selectPlace = (place: string) => {
     const trimmed = place.trim();
@@ -3246,6 +3336,11 @@ export function InvoiceManager() {
                             className="cursor-pointer font-inherit flex items-center gap-1"
                           >
                             <span>Trip {idx + 1}</span>
+                            {trip.driverName ? (
+                              <span className="opacity-75 text-[10px] font-normal truncate max-w-[85px]">
+                                ({trip.driverName})
+                              </span>
+                            ) : null}
                           </button>
 
                           {/* Trip 1 has greyed unaccessible X icon */}
@@ -3302,6 +3397,26 @@ export function InvoiceManager() {
                       </span>
                     )}
                   </div>
+
+                  {/* Bill Driver Salaries Live Summary Bar */}
+                  {billDriverSummaries.length > 0 && (
+                    <div className="mt-2.5 pt-2 border-t border-gray-200/80 dark:border-zinc-700/60 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-bold text-gray-700 dark:text-zinc-300 flex items-center gap-1">
+                        <User className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>Driver Salaries:</span>
+                      </span>
+                      {billDriverSummaries.map((s) => (
+                        <span
+                          key={s.name}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 font-mono text-[11px]"
+                        >
+                          <span className="font-semibold text-gray-900 dark:text-zinc-100">{s.name}:</span>
+                          <span className="text-gray-600 dark:text-zinc-400">{s.totalKm} KM</span>
+                          <span className="font-bold text-blue-700 dark:text-blue-300">₹{Math.round(s.totalSalary).toLocaleString('en-IN')}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Trip Reordering Controls */}
                   {currentBill.visibleTrips > 1 && (
@@ -3477,12 +3592,31 @@ export function InvoiceManager() {
                     </div>
                     <div className="relative">
                       <select
-                        value={activeTrip.driverId || ''}
+                        value={
+                          activeTrip.driverId
+                            ? (availableDrivers.find((d) => d.id === activeTrip.driverId)?.id || activeTrip.driverId)
+                            : activeTrip.driverName
+                            ? (availableDrivers.find((d) => d.name.toLowerCase() === activeTrip.driverName?.toLowerCase())?.id || activeTrip.driverName)
+                            : ''
+                        }
                         onChange={(e) => {
-                          const sel = availableDrivers.find((d) => d.id === e.target.value);
-                          updateActiveTripField('driverId', e.target.value);
-                          updateActiveTripField('driverName', sel ? sel.name : '');
-                          updateActiveTripField('driverRate', sel ? (sel.ratePerKm || 2.5) : 0);
+                          const val = e.target.value;
+                          if (!val) {
+                            updateActiveTripFields({
+                              driverId: '',
+                              driverName: '',
+                              driverRate: 0,
+                            });
+                            return;
+                          }
+                          const sel = availableDrivers.find((d) => d.id === val || d.name === val);
+                          const dName = sel ? sel.name : val;
+                          const dRate = sel && Number(sel.ratePerKm) > 0 ? Number(sel.ratePerKm) : (activeTrip.driverRate || 2.50);
+                          updateActiveTripFields({
+                            driverId: sel ? sel.id : val,
+                            driverName: dName,
+                            driverRate: dRate,
+                          });
                         }}
                         className="w-full appearance-none px-3.5 py-2.5 pr-10 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 text-sm font-medium shadow-xs hover:border-gray-400 dark:hover:border-zinc-600 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all cursor-pointer"
                       >
@@ -3492,6 +3626,11 @@ export function InvoiceManager() {
                             {d.name} {d.ratePerKm > 0 ? `(₹${d.ratePerKm.toFixed(2)}/km)` : ''}
                           </option>
                         ))}
+                        {activeTrip.driverName && !availableDrivers.some((d) => d.id === activeTrip.driverId || d.name.toLowerCase() === activeTrip.driverName?.toLowerCase()) && (
+                          <option value={activeTrip.driverId || activeTrip.driverName}>
+                            {activeTrip.driverName}
+                          </option>
+                        )}
                       </select>
                       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 dark:text-zinc-500">
                         <ChevronDown className="w-4 h-4 stroke-[2.25]" />
@@ -3499,7 +3638,7 @@ export function InvoiceManager() {
                     </div>
 
                     {/* Driver Rate per KM (editable) & Trip Salary Live Display */}
-                    {activeTrip.driverId && (
+                    {(activeTrip.driverId || activeTrip.driverName) && (
                       <div className="mt-2.5 p-2.5 rounded-xl border border-blue-200/80 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-gray-700 dark:text-zinc-300">Rate (₹/KM):</span>
