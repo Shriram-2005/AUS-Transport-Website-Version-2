@@ -155,15 +155,6 @@ CREATE POLICY "Allow anon insert vehicles"
 CREATE POLICY "Allow anon update vehicles"
   ON public.vehicles FOR UPDATE TO anon USING (true);
 
--- 7. Seed Initial Vehicles (TN 76 AK 1094 and TN 99 E 8505)
-INSERT INTO public.vehicles (registration_number, current_km)
-VALUES
-  ('TN 76 AK 1094', 372353),
-  ('TN 99 E 8505', 886017)
-ON CONFLICT (registration_number)
-DO UPDATE SET
-  current_km = EXCLUDED.current_km,
-  updated_at = timezone('utc'::text, now());
 
 -- 8. Auto-Sync Trigger: Updates vehicle current_km when invoices are saved
 CREATE OR REPLACE FUNCTION public.sync_vehicle_km_from_invoice()
@@ -401,7 +392,4 @@ AS $$
   WHERE p_driver_name IS NULL OR UPPER(TRIM(d.driver_name)) = UPPER(TRIM(p_driver_name))
   ORDER BY d.month_key DESC;
 $$;
-
-
-
 

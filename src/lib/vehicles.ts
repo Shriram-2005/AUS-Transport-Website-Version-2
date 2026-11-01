@@ -12,24 +12,7 @@ export interface Vehicle {
   updatedAt?: string;
 }
 
-export const INITIAL_VEHICLES: Vehicle[] = [
-  {
-    id: 'veh-tn76-ak1094',
-    registrationNumber: 'TN 76 AK 1094',
-    currentKm: 372353,
-    odometerReading: 372353,
-    status: 'active',
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'veh-tn99-e8505',
-    registrationNumber: 'TN 99 E 8505',
-    currentKm: 886017,
-    odometerReading: 886017,
-    status: 'active',
-    updatedAt: new Date().toISOString(),
-  },
-];
+export const INITIAL_VEHICLES: Vehicle[] = [];
 
 const VEHICLES_STORAGE_KEY = 'aus_transport_vehicles_v2';
 export const VEHICLES_CHANGE_EVENT = 'aus_vehicles_changed';
@@ -55,66 +38,22 @@ function normalizeVehicle(v: any): Vehicle {
 }
 
 export function getStoredVehicles(): Vehicle[] {
-  if (typeof window === 'undefined') return INITIAL_VEHICLES;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(VEHICLES_STORAGE_KEY);
     if (!raw) {
-      // Check legacy key if present
-      const legacyRaw = localStorage.getItem('aus_transport_vehicles_v1');
-      if (legacyRaw) {
-        try {
-          const parsedLegacy = JSON.parse(legacyRaw);
-          if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
-            const migrated = parsedLegacy.map(normalizeVehicle);
-            // Ensure the two required vehicles have correct user-specified initial currentKm
-            for (const initV of INITIAL_VEHICLES) {
-              const found = migrated.find((m) => m.registrationNumber === initV.registrationNumber);
-              if (found) {
-                if (!found.currentKm || found.currentKm === 880474 || found.currentKm === 880861) {
-                  found.currentKm = initV.currentKm;
-                  found.odometerReading = initV.currentKm;
-                }
-              } else {
-                migrated.push(initV);
-              }
-            }
-            localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(migrated));
-            return migrated;
-          }
-        } catch {}
-      }
-
-      localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(INITIAL_VEHICLES));
-      return INITIAL_VEHICLES;
+      return [];
     }
 
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      const normalized = parsed.map(normalizeVehicle);
-      // Ensure TN 76 AK 1094 and TN 99 E 8505 are present with the user specified values if never updated
-      let changed = false;
-      for (const initV of INITIAL_VEHICLES) {
-        const found = normalized.find((v) => v.registrationNumber === initV.registrationNumber);
-        if (!found) {
-          normalized.push(initV);
-          changed = true;
-        } else if (found.currentKm === 880474) {
-          found.currentKm = 372353;
-          found.odometerReading = 372353;
-          changed = true;
-        }
-      }
-      if (changed) {
-        localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(normalized));
-      }
-      return normalized;
+    if (Array.isArray(parsed)) {
+      return parsed.map(normalizeVehicle);
     }
 
-    localStorage.setItem(VEHICLES_STORAGE_KEY, JSON.stringify(INITIAL_VEHICLES));
-    return INITIAL_VEHICLES;
+    return [];
   } catch (err) {
     console.error('Error reading vehicles from localStorage:', err);
-    return INITIAL_VEHICLES;
+    return [];
   }
 }
 

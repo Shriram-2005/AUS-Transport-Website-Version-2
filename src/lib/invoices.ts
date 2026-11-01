@@ -54,95 +54,8 @@ export interface VehicleMonthlyStat {
 export const INVOICES_STORAGE_KEY = 'aus_transport_invoices_v1';
 export const INVOICES_CHANGE_EVENT = 'aus_invoices_changed';
 
-export const INITIAL_BILLS: BillData[] = [
-  {
-    billNumber: 424,
-    date: '07-10-2026',
-    vehicleNumber: 'TN 99 E 8505',
-    consigneePreset: 'broiler_branch',
-    consigneeName: 'VENKATESHWARA HATCHERIES PVT LTD.',
-    consigneeAddress: 'BROILER BRANCH, TN, KA, AP & KL',
-    consigneeGst: '33AAACV7247H1ZB (Nilakkottai)',
-    consigneeOverride: false,
-    activeTrip: 1,
-    visibleTrips: 2,
-    trips: [
-      { id: 1, enabled: true, date: '02-10-2026', dcNo: 67122, particulars: 'CHICKS - 19980', itemName: 'CHICKS', itemQuantity: '19980', driverId: '', driverName: '', route: 'Tiruchirappalli, Vellakovil', startingKm: 880040, closingKm: 880474, rate: 21.32, tollEnabled: true, tollAmount: 595 },
-      { id: 2, enabled: true, date: '07-10-2026', dcNo: 67123, particulars: 'CHICKS - 20820', itemName: 'CHICKS', itemQuantity: '20820', driverId: '', driverName: '', route: 'Madurai, Vellakovil', startingKm: 880474, closingKm: 880861, rate: 21.32, tollEnabled: true, tollAmount: 820 },
-      { id: 3, enabled: true, date: '09-10-2026', dcNo: 67124, particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 880861, closingKm: 880861, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 4, enabled: true, date: '11-10-2026', dcNo: 67125, particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 880861, closingKm: 880861, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 5, enabled: true, date: '12-10-2026', dcNo: 67126, particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 880861, closingKm: 880861, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 6, enabled: true, date: '14-10-2026', dcNo: 67127, particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 880861, closingKm: 880861, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-    ],
-    keralaRtoEnabled: false,
-    keralaRtoMultiplier: 0,
-    keralaRtoAmount: 0,
-    dieselAvgRate: 0,
-    rupeesInWordsMode: 'auto',
-    rupeesInWordsText: 'Eighteen Thousand Nine Hundred Nineteen Only.',
-    status: 'unpaid',
-    locked: false,
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    billNumber: 423,
-    date: '30-09-2026',
-    vehicleNumber: 'TN 99 E 8505',
-    consigneePreset: 'broiler_branch',
-    consigneeName: 'VENKATESHWARA HATCHERIES PVT LTD.',
-    consigneeAddress: 'BROILER BRANCH, TN, KA, AP & KL',
-    consigneeGst: '33AAACV7247H1ZB (Nilakkottai)',
-    consigneeOverride: false,
-    activeTrip: 1,
-    visibleTrips: 3,
-    trips: [
-      { id: 1, enabled: true, date: '25-09-2026', dcNo: 66910, particulars: 'CHICKS - 18500', itemName: 'CHICKS', itemQuantity: '18500', route: 'Salem, Namakkal', startingKm: 878200, closingKm: 878850, rate: 21.32, tollEnabled: true, tollAmount: 640 },
-      { id: 2, enabled: true, date: '28-09-2026', dcNo: 66911, particulars: 'CHICKS - 19200', itemName: 'CHICKS', itemQuantity: '19200', route: 'Erode, Tiruppur', startingKm: 878850, closingKm: 879480, rate: 21.32, tollEnabled: true, tollAmount: 420 },
-      { id: 3, enabled: true, date: '30-09-2026', dcNo: 66912, particulars: 'CHICKS - 17800', itemName: 'CHICKS', itemQuantity: '17800', route: 'Palani, Pollachi', startingKm: 879480, closingKm: 880040, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 4, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 5, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 6, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-    ],
-    keralaRtoEnabled: false,
-    keralaRtoMultiplier: 0,
-    keralaRtoAmount: 0,
-    dieselAvgRate: 93.38,
-    rupeesInWordsMode: 'auto',
-    rupeesInWordsText: 'Thirty Five Thousand Nine Hundred Forty Only.',
-    status: 'unpaid',
-    locked: false,
-    updatedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-  },
-  {
-    billNumber: 422,
-    date: '22-09-2026',
-    vehicleNumber: 'TN 76 AK 1094',
-    consigneePreset: 'broiler_branch',
-    consigneeName: 'VENKATESHWARA HATCHERIES PVT LTD.',
-    consigneeAddress: 'BROILER BRANCH, TN, KA, AP & KL',
-    consigneeGst: '33AAACV7247H1ZB (Nilakkottai)',
-    consigneeOverride: false,
-    activeTrip: 1,
-    visibleTrips: 2,
-    trips: [
-      { id: 1, enabled: true, date: '18-09-2026', dcNo: 66750, particulars: 'CHICKS - 21000', itemName: 'CHICKS', itemQuantity: '21000', route: 'Pollachi, Palani', startingKm: 303980, closingKm: 304520, rate: 20.27, tollEnabled: false, tollAmount: 0 },
-      { id: 2, enabled: true, date: '21-09-2026', dcNo: 66751, particulars: 'CHICKS - 18000', itemName: 'CHICKS', itemQuantity: '18000', route: 'Salem, Namakkal', startingKm: 304520, closingKm: 305100, rate: 20.27, tollEnabled: true, tollAmount: 750 },
-      { id: 3, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
-      { id: 4, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
-      { id: 5, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
-      { id: 6, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
-    ],
-    keralaRtoEnabled: false,
-    keralaRtoMultiplier: 0,
-    keralaRtoAmount: 0,
-    dieselAvgRate: 93.38,
-    rupeesInWordsMode: 'auto',
-    rupeesInWordsText: 'Twenty Three Thousand Four Hundred Fifty One Only.',
-    status: 'paid',
-    locked: false,
-    updatedAt: new Date(Date.now() - 86400000 * 8).toISOString(),
-  },
-];
+export const INITIAL_BILLS: BillData[] = [];
+
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -198,22 +111,20 @@ export function parseMonthFromDate(dateStr?: string): { key: string; label: stri
  * Returns stored bills from localStorage or initial bills.
  */
 export function getStoredInvoices(): BillData[] {
-  if (typeof window === 'undefined') return INITIAL_BILLS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(INVOICES_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(INVOICES_STORAGE_KEY, JSON.stringify(INITIAL_BILLS));
-      return INITIAL_BILLS;
+      return [];
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return parsed;
     }
-    localStorage.setItem(INVOICES_STORAGE_KEY, JSON.stringify(INITIAL_BILLS));
-    return INITIAL_BILLS;
+    return [];
   } catch (err) {
     console.error('Error reading invoices from localStorage:', err);
-    return INITIAL_BILLS;
+    return [];
   }
 }
 
