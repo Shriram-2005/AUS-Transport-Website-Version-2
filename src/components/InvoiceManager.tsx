@@ -194,95 +194,35 @@ function formatDateForInput(ddmmyyyyStr?: string): string {
   return `${year}-${month}-${day}`;
 }
 
-const DEFAULT_BILLS: BillData[] = [
-  {
-    billNumber: 424,
-    date: '07-10-2026',
-    vehicleNumber: 'TN 99 E 8505',
-    consigneePreset: 'broiler_branch',
-    consigneeName: 'VENKATESHWARA HATCHERIES PVT LTD.',
-    consigneeAddress: 'BROILER BRANCH, TN, KA, AP & KL',
-    consigneeGst: '33AAACV7247H1ZB (Nilakkottai)',
-    consigneeOverride: false,
-    activeTrip: 1,
-    visibleTrips: 2,
-    trips: [
-      { id: 1, enabled: true, date: '02-10-2026', dcNo: 67122, particulars: 'CHICKS - 19980', itemName: 'CHICKS', itemQuantity: '19980', driverId: '', driverName: '', route: 'Tiruchirappalli, Vellakovil', startingKm: 880040, closingKm: 880474, rate: 21.32, tollEnabled: true, tollAmount: 595 },
-      { id: 2, enabled: true, date: '07-10-2026', dcNo: 67123, particulars: 'CHICKS - 20820', itemName: 'CHICKS', itemQuantity: '20820', driverId: '', driverName: '', route: 'Madurai, Vellakovil', startingKm: 880474, closingKm: 880861, rate: 21.32, tollEnabled: true, tollAmount: 820 },
-      { id: 3, enabled: true, date: '09-10-2026', dcNo: 67124, particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 880861, closingKm: 880861, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 4, enabled: true, date: '11-10-2026', dcNo: 67125, particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 880861, closingKm: 880861, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 5, enabled: true, date: '12-10-2026', dcNo: 67126, particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 880861, closingKm: 880861, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 6, enabled: true, date: '14-10-2026', dcNo: 67127, particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 880861, closingKm: 880861, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-    ],
-    keralaRtoEnabled: false,
-    keralaRtoMultiplier: 0,
-    keralaRtoAmount: 0,
-    dieselAvgRate: 0,
-    rupeesInWordsMode: 'auto',
-    rupeesInWordsText: 'Eighteen Thousand Nine Hundred Nineteen Only.',
-    status: 'unpaid',
-    locked: false,
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    billNumber: 423,
-    date: '30-09-2026',
-    vehicleNumber: 'TN 99 E 8505',
-    consigneePreset: 'broiler_branch',
-    consigneeName: 'VENKATESHWARA HATCHERIES PVT LTD.',
-    consigneeAddress: 'BROILER BRANCH, TN, KA, AP & KL',
-    consigneeGst: '33AAACV7247H1ZB (Nilakkottai)',
-    consigneeOverride: false,
-    activeTrip: 1,
-    visibleTrips: 3,
-    trips: [
-      { id: 1, enabled: true, date: '25-09-2026', dcNo: 66910, particulars: 'CHICKS - 18500', itemName: 'CHICKS', itemQuantity: '18500', route: 'Salem, Namakkal', startingKm: 878200, closingKm: 878850, rate: 21.32, tollEnabled: true, tollAmount: 640 },
-      { id: 2, enabled: true, date: '28-09-2026', dcNo: 66911, particulars: 'CHICKS - 19200', itemName: 'CHICKS', itemQuantity: '19200', route: 'Erode, Tiruppur', startingKm: 878850, closingKm: 879480, rate: 21.32, tollEnabled: true, tollAmount: 420 },
-      { id: 3, enabled: true, date: '30-09-2026', dcNo: 66912, particulars: 'CHICKS - 17800', itemName: 'CHICKS', itemQuantity: '17800', route: 'Palani, Pollachi', startingKm: 879480, closingKm: 880040, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 4, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 5, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-      { id: 6, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
-    ],
-    keralaRtoEnabled: false,
-    keralaRtoMultiplier: 0,
-    keralaRtoAmount: 0,
-    dieselAvgRate: 93.38,
-    rupeesInWordsMode: 'auto',
-    rupeesInWordsText: 'Thirty Five Thousand Nine Hundred Forty Only.',
-    status: 'unpaid',
-    locked: false,
-    updatedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-  },
-  {
-    billNumber: 422,
-    date: '22-09-2026',
-    vehicleNumber: 'TN 76 AK 1094',
-    consigneePreset: 'broiler_branch',
-    consigneeName: 'VENKATESHWARA HATCHERIES PVT LTD.',
-    consigneeAddress: 'BROILER BRANCH, TN, KA, AP & KL',
-    consigneeGst: '33AAACV7247H1ZB (Nilakkottai)',
-    consigneeOverride: false,
-    activeTrip: 1,
-    visibleTrips: 2,
-    trips: [
-      { id: 1, enabled: true, date: '18-09-2026', dcNo: 66750, particulars: 'CHICKS - 21000', itemName: 'CHICKS', itemQuantity: '21000', route: 'Pollachi, Palani', startingKm: 303980, closingKm: 304520, rate: 20.27, tollEnabled: false, tollAmount: 0 },
-      { id: 2, enabled: true, date: '21-09-2026', dcNo: 66751, particulars: 'CHICKS - 18000', itemName: 'CHICKS', itemQuantity: '18000', route: 'Salem, Namakkal', startingKm: 304520, closingKm: 305100, rate: 20.27, tollEnabled: true, tollAmount: 750 },
-      { id: 3, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
-      { id: 4, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
-      { id: 5, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
-      { id: 6, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
-    ],
-    keralaRtoEnabled: false,
-    keralaRtoMultiplier: 0,
-    keralaRtoAmount: 0,
-    dieselAvgRate: 93.38,
-    rupeesInWordsMode: 'auto',
-    rupeesInWordsText: 'Twenty Three Thousand Four Hundred Fifty One Only.',
-    status: 'paid',
-    locked: false,
-    updatedAt: new Date(Date.now() - 86400000 * 8).toISOString(),
-  },
-];
+const createEmptyBill = (): BillData => ({
+  billNumber: '',
+  date: formatDateToDDMMYYYY(new Date()),
+  vehicleNumber: '',
+  consigneePreset: 'broiler_branch',
+  consigneeName: 'VENKATESHWARA HATCHERIES PVT LTD.',
+  consigneeAddress: 'BROILER BRANCH, TN, KA, AP & KL',
+  consigneeGst: '33AAACV7247H1ZB (Nilakkottai)',
+  consigneeOverride: false,
+  activeTrip: 1,
+  visibleTrips: 1,
+  trips: [
+    { id: 1, enabled: true, date: formatDateToDDMMYYYY(new Date()), dcNo: '', particulars: '', itemName: 'CHICKS', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
+    { id: 2, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
+    { id: 3, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
+    { id: 4, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
+    { id: 5, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
+    { id: 6, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 21.32, tollEnabled: false, tollAmount: 0 },
+  ],
+  keralaRtoEnabled: false,
+  keralaRtoMultiplier: 0,
+  keralaRtoAmount: 0,
+  dieselAvgRate: 0,
+  rupeesInWordsMode: 'auto',
+  rupeesInWordsText: '',
+  status: 'unpaid',
+  locked: false,
+  updatedAt: new Date().toISOString(),
+});
 
 export function InvoiceManager() {
   const [view, setView] = useState<'dashboard' | 'editor'>('dashboard');
@@ -291,9 +231,6 @@ export function InvoiceManager() {
     let initial: BillData[] = [];
     if (typeof window !== 'undefined') {
       initial = getStoredInvoices();
-    }
-    if (!initial || initial.length === 0) {
-      initial = DEFAULT_BILLS;
     }
     return [...initial].sort((a, b) => {
       const numA = parseInt(String(a.billNumber).replace(/\D/g, ''), 10) || 0;
@@ -306,7 +243,7 @@ export function InvoiceManager() {
       const stored = getStoredInvoices();
       if (stored.length > 0) return stored[0];
     }
-    return DEFAULT_BILLS[0];
+    return createEmptyBill();
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -552,74 +489,80 @@ export function InvoiceManager() {
         .select('*')
         .order('bill_date', { ascending: false });
 
-      if (!error && data && data.length > 0) {
-        const loadedBills: BillData[] = data.map((item: any) => {
-          if (item.raw_data && item.raw_data.trips) {
+      if (!error && data) {
+        if (data.length > 0) {
+          const loadedBills: BillData[] = data.map((item: any) => {
+            if (item.raw_data && item.raw_data.trips) {
+              return {
+                ...item.raw_data,
+                id: item.id,
+                billNumber: item.bill_number,
+                date: item.bill_date,
+                vehicleNumber: item.vehicle_number,
+                consigneeName: item.raw_data.consigneeName || item.consignee?.name || 'VENKATESHWARA HATCHERIES PVT LTD.',
+                consigneeAddress: item.raw_data.consigneeAddress || item.consignee?.address || 'BROILER BRANCH, TN, KA, AP & KL',
+                consigneeGst: item.raw_data.consigneeGst || item.consignee?.gst || '33AAACV7247H1ZB (Nilakkottai)',
+                consigneePreset: item.raw_data.consigneePreset || item.consignee?.preset || 'broiler_branch',
+                consigneeOverride: item.raw_data.consigneeOverride ?? item.consignee?.override ?? false,
+                status: item.payment_status || item.raw_data.status || 'unpaid',
+                locked: item.is_locked ?? item.raw_data.locked ?? false,
+                updatedAt: item.updated_at || item.created_at,
+              };
+            }
+            // Fallback mapper
             return {
-              ...item.raw_data,
               id: item.id,
               billNumber: item.bill_number,
               date: item.bill_date,
               vehicleNumber: item.vehicle_number,
-              consigneeName: item.raw_data.consigneeName || item.consignee?.name || 'VENKATESHWARA HATCHERIES PVT LTD.',
-              consigneeAddress: item.raw_data.consigneeAddress || item.consignee?.address || 'BROILER BRANCH, TN, KA, AP & KL',
-              consigneeGst: item.raw_data.consigneeGst || item.consignee?.gst || '33AAACV7247H1ZB (Nilakkottai)',
-              consigneePreset: item.raw_data.consigneePreset || item.consignee?.preset || 'broiler_branch',
-              consigneeOverride: item.raw_data.consigneeOverride ?? item.consignee?.override ?? false,
-              status: item.payment_status || item.raw_data.status || 'unpaid',
-              locked: item.is_locked ?? item.raw_data.locked ?? false,
+              consigneePreset: item.consignee?.preset || 'broiler_branch',
+              consigneeName: item.consignee?.name || 'VENKATESHWARA HATCHERIES PVT LTD.',
+              consigneeAddress: item.consignee?.address || 'BROILER BRANCH, TN, KA, AP & KL',
+              consigneeGst: item.consignee?.gst || '33AAACV7247H1ZB (Nilakkottai)',
+              consigneeOverride: item.consignee?.override || false,
+              activeTrip: 1,
+              visibleTrips: item.trips?.length || 1,
+              trips: (item.trips || []).map((t: any, idx: number) => ({
+                id: idx + 1,
+                enabled: true,
+                date: t.date || item.bill_date,
+                dcNo: t.dcNo || '',
+                particulars: t.particulars || t.itemQuantity || '',
+                itemName: t.itemName || t.itemType || 'CHICKS',
+                itemQuantity: t.itemQuantity || t.quantity || '',
+                driverId: t.driverId || '',
+                driverName: t.driverName || '',
+                driverRate: Number(t.driverRate) || 0,
+                route: t.route || (t.places ? t.places.join(', ') : ''),
+                startingKm: Number(t.startingKm) || 0,
+                closingKm: Number(t.closingKm) || 0,
+                rate: Number(t.rate) || 20.27,
+                tollEnabled: t.tollEnabled ?? (Number(t.tollAmount || t.tollExpense) > 0),
+                tollAmount: Number(t.tollAmount || t.tollExpense) || 0,
+              })),
+              keralaRtoEnabled: item.expenses?.hasRto ?? false,
+              keralaRtoMultiplier: item.expenses?.rtoMultiplier ?? 0,
+              keralaRtoAmount: item.expenses?.rtoExpense ?? 0,
+              dieselAvgRate: item.expenses?.dieselAvgRate ?? 0,
+              rupeesInWordsMode: 'auto',
+              rupeesInWordsText: item.amount_in_words || '',
+              status: item.payment_status === 'Paid' ? 'paid' : 'unpaid',
+              locked: item.is_locked || false,
               updatedAt: item.updated_at || item.created_at,
             };
-          }
-          // Fallback mapper
-          return {
-            id: item.id,
-            billNumber: item.bill_number,
-            date: item.bill_date,
-            vehicleNumber: item.vehicle_number,
-            consigneePreset: item.consignee?.preset || 'broiler_branch',
-            consigneeName: item.consignee?.name || 'VENKATESHWARA HATCHERIES PVT LTD.',
-            consigneeAddress: item.consignee?.address || 'BROILER BRANCH, TN, KA, AP & KL',
-            consigneeGst: item.consignee?.gst || '33AAACV7247H1ZB (Nilakkottai)',
-            consigneeOverride: item.consignee?.override || false,
-            activeTrip: 1,
-            visibleTrips: item.trips?.length || 1,
-            trips: (item.trips || []).map((t: any, idx: number) => ({
-              id: idx + 1,
-              enabled: true,
-              date: t.date || item.bill_date,
-              dcNo: t.dcNo || '',
-              particulars: t.particulars || t.itemQuantity || '',
-              itemName: t.itemName || t.itemType || 'CHICKS',
-              itemQuantity: t.itemQuantity || t.quantity || '',
-              driverId: t.driverId || '',
-              driverName: t.driverName || '',
-              driverRate: Number(t.driverRate) || 0,
-              route: t.route || (t.places ? t.places.join(', ') : ''),
-              startingKm: Number(t.startingKm) || 0,
-              closingKm: Number(t.closingKm) || 0,
-              rate: Number(t.rate) || 20.27,
-              tollEnabled: t.tollEnabled ?? (Number(t.tollAmount || t.tollExpense) > 0),
-              tollAmount: Number(t.tollAmount || t.tollExpense) || 0,
-            })),
-            keralaRtoEnabled: item.expenses?.hasRto ?? false,
-            keralaRtoMultiplier: item.expenses?.rtoMultiplier ?? 0,
-            keralaRtoAmount: item.expenses?.rtoExpense ?? 0,
-            dieselAvgRate: item.expenses?.dieselAvgRate ?? 0,
-            rupeesInWordsMode: 'auto',
-            rupeesInWordsText: item.amount_in_words || '',
-            status: item.payment_status === 'Paid' ? 'paid' : 'unpaid',
-            locked: item.is_locked || false,
-            updatedAt: item.updated_at || item.created_at,
-          };
-        });
-        loadedBills.sort((a, b) => {
-          const numA = parseInt(String(a.billNumber).replace(/\D/g, ''), 10) || 0;
-          const numB = parseInt(String(b.billNumber).replace(/\D/g, ''), 10) || 0;
-          return numB - numA;
-        });
-        setBills(loadedBills);
-        saveStoredInvoices(loadedBills);
+          });
+          loadedBills.sort((a, b) => {
+            const numA = parseInt(String(a.billNumber).replace(/\D/g, ''), 10) || 0;
+            const numB = parseInt(String(b.billNumber).replace(/\D/g, ''), 10) || 0;
+            return numB - numA;
+          });
+          setBills(loadedBills);
+          saveStoredInvoices(loadedBills);
+        } else {
+          // Zero invoices in Supabase: clear bills state and localStorage
+          setBills([]);
+          saveStoredInvoices([]);
+        }
       }
     } catch (err) {
       console.error('Error loading bills from Supabase:', err);
@@ -1070,24 +1013,27 @@ export function InvoiceManager() {
 
   const handleDeleteBill = async (billId: string | number) => {
     if (!window.confirm('Are you sure you want to delete this bill?')) return;
-    const target = bills.find((b) => b.id === billId || b.billNumber === billId);
+    const target = bills.find(
+      (b) => String(b.id) === String(billId) || String(b.billNumber) === String(billId)
+    );
     setBills((prev) => {
-      const filtered = prev.filter((b) => b.id !== billId && b.billNumber !== billId);
+      const filtered = prev.filter(
+        (b) => String(b.id) !== String(billId) && String(b.billNumber) !== String(billId)
+      );
       saveStoredInvoices(filtered);
       return filtered;
     });
     setActiveMenuId(null);
 
-    if (target) {
-      try {
-        const supabase = createClient();
-        await supabase.from('invoices').delete().eq('bill_number', String(target.billNumber));
-        if (target.id) {
-          await supabase.from('invoices').delete().eq('id', target.id);
-        }
-      } catch (err) {
-        console.error('Error deleting bill from Supabase:', err);
+    const billNumToDelete = target ? target.billNumber : billId;
+    try {
+      const supabase = createClient();
+      await supabase.from('invoices').delete().eq('bill_number', String(billNumToDelete));
+      if (target?.id) {
+        await supabase.from('invoices').delete().eq('id', target.id);
       }
+    } catch (err) {
+      console.error('Error deleting bill from Supabase:', err);
     }
   };
 
