@@ -580,6 +580,7 @@ export function InvoiceManager() {
   const saveBillAsync = useCallback(
     async (billToSave: BillData, isSilent: boolean = false) => {
       if (!billToSave || !billToSave.billNumber) return;
+      isSavingRef.current = true;
       if (!isSilent) {
         setSaving(true);
         setSaveIndicator('saving');
@@ -635,7 +636,12 @@ export function InvoiceManager() {
 
       try {
         const supabase = createClient();
-        await supabase.from('invoices').upsert(payload, { onConflict: 'bill_number' });
+        const { error: upsertError } = await supabase
+          .from('invoices')
+          .upsert(payload, { onConflict: 'bill_number' });
+        if (upsertError) {
+          console.error('Supabase upsert invoice error:', upsertError);
+        }
 
         // Update state in background
         setBills((prev) => {
@@ -678,6 +684,7 @@ export function InvoiceManager() {
           setTimeout(() => setSaveIndicator(null), 3000);
         }
       } finally {
+        isSavingRef.current = false;
         if (!isSilent) {
           setSaving(false);
         }
@@ -1038,11 +1045,10 @@ export function InvoiceManager() {
   };
 
   const handleDuplicateBill = (bill: BillData) => {
-    const nextBillNo =
-      Math.max(
-        424,
-        ...bills.map((b) => parseInt(String(b.billNumber), 10)).filter((n) => !isNaN(n))
-      ) + 1;
+    const existingNums = bills
+      .map((b) => parseInt(String(b.billNumber).replace(/\D/g, ''), 10))
+      .filter((n) => !isNaN(n) && n > 0);
+    const nextBillNo = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
 
     const duplicated: BillData = {
       ...bill,
@@ -1059,16 +1065,15 @@ export function InvoiceManager() {
   };
 
   const handleCreateNewBill = () => {
-    const nextBillNo =
-      Math.max(
-        424,
-        ...bills.map((b) => parseInt(String(b.billNumber), 10)).filter((n) => !isNaN(n))
-      ) + 1;
+    const existingNums = bills
+      .map((b) => parseInt(String(b.billNumber).replace(/\D/g, ''), 10))
+      .filter((n) => !isNaN(n) && n > 0);
+    const nextBillNo = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
 
     const newBill: BillData = {
       billNumber: nextBillNo,
       date: formatDateToDDMMYYYY(new Date()),
-      vehicleNumber: currentBill.vehicleNumber || (availableVehicles[0]?.registrationNumber ?? 'TN 76 AK 1094'),
+      vehicleNumber: currentBill.vehicleNumber || (availableVehicles[0]?.registrationNumber ?? ''),
       consigneePreset: 'broiler_branch',
       consigneeName: 'VENKATESHWARA HATCHERIES PVT LTD.',
       consigneeAddress: 'BROILER BRANCH, TN, KA, AP & KL',

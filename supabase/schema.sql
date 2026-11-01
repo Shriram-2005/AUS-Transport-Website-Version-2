@@ -124,6 +124,19 @@ CREATE POLICY "Allow authenticated update invoices"
 CREATE POLICY "Allow authenticated delete invoices"
   ON public.invoices FOR DELETE TO authenticated USING (true);
 
+-- Allow anon access for invoices (dev / testing / public client access)
+CREATE POLICY "Allow anon read invoices"
+  ON public.invoices FOR SELECT TO anon USING (true);
+
+CREATE POLICY "Allow anon insert invoices"
+  ON public.invoices FOR INSERT TO anon WITH CHECK (true);
+
+CREATE POLICY "Allow anon update invoices"
+  ON public.invoices FOR UPDATE TO anon USING (true);
+
+CREATE POLICY "Allow anon delete invoices"
+  ON public.invoices FOR DELETE TO anon USING (true);
+
 -- 6. Vehicles Table
 CREATE TABLE IF NOT EXISTS public.vehicles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -158,6 +171,9 @@ CREATE POLICY "Allow anon insert vehicles"
 
 CREATE POLICY "Allow anon update vehicles"
   ON public.vehicles FOR UPDATE TO anon USING (true);
+
+CREATE POLICY "Allow anon delete vehicles"
+  ON public.vehicles FOR DELETE TO anon USING (true);
 
 
 -- 8. Auto-Sync Trigger: Updates vehicle current_km when invoices are saved
@@ -324,6 +340,10 @@ CREATE POLICY "Allow anon insert drivers"
 DROP POLICY IF EXISTS "Allow anon update drivers" ON public.drivers;
 CREATE POLICY "Allow anon update drivers"
   ON public.drivers FOR UPDATE TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon delete drivers" ON public.drivers;
+CREATE POLICY "Allow anon delete drivers"
+  ON public.drivers FOR DELETE TO anon USING (true);
 
 -- 11. Driver Monthly Kilometers & Salary View
 -- Aggregates total KMs run and salary earned per month for each driver from invoices
