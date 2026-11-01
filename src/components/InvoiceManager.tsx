@@ -1081,7 +1081,10 @@ export function InvoiceManager() {
     if (target) {
       try {
         const supabase = createClient();
-        await supabase.from('invoices').delete().eq('bill_number', target.billNumber);
+        await supabase.from('invoices').delete().eq('bill_number', String(target.billNumber));
+        if (target.id) {
+          await supabase.from('invoices').delete().eq('id', target.id);
+        }
       } catch (err) {
         console.error('Error deleting bill from Supabase:', err);
       }

@@ -202,17 +202,28 @@ export function VehicleManager() {
   };
 
   // Submit Add Vehicle
-  const handleAddVehicle = (e: React.FormEvent) => {
+  const handleAddVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanReg = formVehicleNumber.trim().toUpperCase();
     if (!cleanReg) return;
+    const km = parseFloat(formCurrentKm) || 0;
 
-    addStoredVehicle({
+    const newV = addStoredVehicle({
       registrationNumber: cleanReg,
-      currentKm: parseFloat(formCurrentKm) || 0,
+      currentKm: km,
     });
-
+    setVehicles((prev) => [newV, ...prev.filter((v) => v.registrationNumber !== cleanReg)]);
     setIsAddModalOpen(false);
+
+    try {
+      const supabase = createClient();
+      await supabase.from('vehicles').upsert(
+        { registration_number: cleanReg, current_km: km, updated_at: new Date().toISOString() },
+        { onConflict: 'registration_number' }
+      );
+    } catch (err) {
+      console.error('Error saving vehicle to Supabase:', err);
+    }
   };
 
   // Open Edit Modal
@@ -224,18 +235,31 @@ export function VehicleManager() {
   };
 
   // Submit Edit Vehicle
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingVehicle) return;
     const cleanReg = formVehicleNumber.trim().toUpperCase();
     if (!cleanReg) return;
+    const km = parseFloat(formCurrentKm) || 0;
 
     updateStoredVehicle(editingVehicle.id, {
       registrationNumber: cleanReg,
-      currentKm: parseFloat(formCurrentKm) || 0,
+      currentKm: km,
     });
-
+    setVehicles((prev) =>
+      prev.map((v) => (v.id === editingVehicle.id ? { ...v, registrationNumber: cleanReg, currentKm: km } : v))
+    );
     setEditingVehicle(null);
+
+    try {
+      const supabase = createClient();
+      await supabase.from('vehicles').upsert(
+        { registration_number: cleanReg, current_km: km, updated_at: new Date().toISOString() },
+        { onConflict: 'registration_number' }
+      );
+    } catch (err) {
+      console.error('Error updating vehicle in Supabase:', err);
+    }
   };
 
   // Open Quick KM Modal
@@ -246,22 +270,45 @@ export function VehicleManager() {
   };
 
   // Submit Quick KM
-  const handleSaveQuickKm = (e: React.FormEvent) => {
+  const handleSaveQuickKm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickKmVehicle) return;
+    const km = parseFloat(quickKmValue) || 0;
+    const targetReg = quickKmVehicle.registrationNumber;
 
     updateStoredVehicle(quickKmVehicle.id, {
-      currentKm: parseFloat(quickKmValue) || 0,
+      currentKm: km,
     });
-
+    setVehicles((prev) =>
+      prev.map((v) => (v.id === quickKmVehicle.id ? { ...v, currentKm: km } : v))
+    );
     setQuickKmVehicle(null);
+
+    try {
+      const supabase = createClient();
+      await supabase.from('vehicles').upsert(
+        { registration_number: targetReg, current_km: km, updated_at: new Date().toISOString() },
+        { onConflict: 'registration_number' }
+      );
+    } catch (err) {
+      console.error('Error updating vehicle km in Supabase:', err);
+    }
   };
 
   // Confirm Delete
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deletingVehicle) return;
-    deleteStoredVehicle(deletingVehicle.id);
+    const target = deletingVehicle;
+    deleteStoredVehicle(target.id);
+    setVehicles((prev) => prev.filter((v) => v.id !== target.id));
     setDeletingVehicle(null);
+
+    try {
+      const supabase = createClient();
+      await supabase.from('vehicles').delete().eq('registration_number', target.registrationNumber);
+    } catch (err) {
+      console.error('Error deleting vehicle from Supabase:', err);
+    }
   };
 
   return (

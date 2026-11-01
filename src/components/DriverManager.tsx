@@ -206,20 +206,32 @@ export function DriverManager() {
   };
 
   // Submit Add Driver
-  const handleAddDriver = (e: React.FormEvent) => {
+  const handleAddDriver = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = formDriverName.trim();
     if (!cleanName) return;
+    const rate = parseFloat(formRatePerKm) || 2.50;
 
-    addStoredDriver({
+    const newDriver = addStoredDriver({
       name: cleanName,
-      ratePerKm: parseFloat(formRatePerKm) || 2.50,
+      ratePerKm: rate,
       status: 'active',
     });
+    setDrivers((prev) => [newDriver, ...prev.filter((d) => d.name !== cleanName)]);
 
     setIsAddModalOpen(false);
     setFormDriverName('');
     setFormRatePerKm('2.50');
+
+    try {
+      const supabase = createClient();
+      await supabase.from('drivers').upsert(
+        { name: cleanName, rate_per_km: rate, status: 'active', updated_at: new Date().toISOString() },
+        { onConflict: 'name' }
+      );
+    } catch (err) {
+      console.error('Error saving driver to Supabase:', err);
+    }
   };
 
   // Open Edit Modal
@@ -231,20 +243,35 @@ export function DriverManager() {
   };
 
   // Submit Edit Driver
-  const handleEditDriver = (e: React.FormEvent) => {
+  const handleEditDriver = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingDriver) return;
     const cleanName = formDriverName.trim();
     if (!cleanName) return;
+    const rate = parseFloat(formRatePerKm) || 2.50;
+    const oldName = editingDriver.name;
 
     updateStoredDriver(editingDriver.id, {
       name: cleanName,
-      ratePerKm: parseFloat(formRatePerKm) || 2.50,
+      ratePerKm: rate,
     });
+    setDrivers((prev) =>
+      prev.map((d) => (d.id === editingDriver.id ? { ...d, name: cleanName, ratePerKm: rate } : d))
+    );
 
     setEditingDriver(null);
     setFormDriverName('');
     setFormRatePerKm('2.50');
+
+    try {
+      const supabase = createClient();
+      await supabase.from('drivers').upsert(
+        { name: cleanName, rate_per_km: rate, status: 'active', updated_at: new Date().toISOString() },
+        { onConflict: 'name' }
+      );
+    } catch (err) {
+      console.error('Error updating driver in Supabase:', err);
+    }
   };
 
   // Open Quick Rate Update Modal
@@ -255,24 +282,47 @@ export function DriverManager() {
   };
 
   // Submit Quick Rate Update
-  const handleQuickRateSubmit = (e: React.FormEvent) => {
+  const handleQuickRateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickRateDriver) return;
 
     const rateNum = parseFloat(quickRateValue) || 0;
+    const driverName = quickRateDriver.name;
     updateStoredDriver(quickRateDriver.id, {
       ratePerKm: rateNum,
     });
+    setDrivers((prev) =>
+      prev.map((d) => (d.id === quickRateDriver.id ? { ...d, ratePerKm: rateNum } : d))
+    );
 
     setQuickRateDriver(null);
     setQuickRateValue('');
+
+    try {
+      const supabase = createClient();
+      await supabase
+        .from('drivers')
+        .update({ rate_per_km: rateNum, updated_at: new Date().toISOString() })
+        .eq('name', driverName);
+    } catch (err) {
+      console.error('Error updating driver rate in Supabase:', err);
+    }
   };
 
   // Confirm Delete Driver
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (deletingDriver) {
-      deleteStoredDriver(deletingDriver.id);
+      const target = deletingDriver;
+      deleteStoredDriver(target.id);
+      setDrivers((prev) => prev.filter((d) => d.id !== target.id));
       setDeletingDriver(null);
+
+      try {
+        const supabase = createClient();
+        await supabase.from('drivers').delete().eq('name', target.name);
+      } catch (err) {
+        console.error('Error deleting driver from Supabase:', err);
+      }
     }
   };
 

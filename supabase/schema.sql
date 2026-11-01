@@ -1,9 +1,13 @@
 -- ==============================================================================
--- AUS Transport Website - Supabase Database Schema
+-- AUS Transport Website - Supabase Database Schema (Fresh Setup / Clean Wipe)
 -- File: supabase/schema.sql
--- Description: Central schema and migration file tracking all database definitions,
---              Row Level Security (RLS) policies, and admin access rules.
+-- Description: Sets up clean, empty tables with zero hardcoded rows.
+--              Includes optional reset section to clear out legacy data.
 -- ==============================================================================
+
+-- FRESH WIPE (Uncomment the 2 lines below if you want to drop and reset all old data):
+-- DROP TABLE IF EXISTS public.invoices, public.vehicles, public.drivers CASCADE;
+-- DROP VIEW IF EXISTS public.vehicle_monthly_kms, public.driver_monthly_kms CASCADE;
 
 -- 1. Create custom enum or check for user roles
 CREATE TABLE IF NOT EXISTS public.profiles (
