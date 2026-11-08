@@ -664,6 +664,29 @@ LEFT JOIN (
   GROUP BY vehicle_number
 ) e ON UPPER(TRIM(e.vehicle_number)) = UPPER(TRIM(v.registration_number));
 
+-- ==============================================================================
+-- 17. Fleet Executive Overview KPIs View
+-- ==============================================================================
+CREATE OR REPLACE VIEW public.fleet_overview_kpis AS
+SELECT
+  (SELECT COUNT(*) FROM public.vehicles) AS total_vehicles,
+  (SELECT COUNT(*) FROM public.drivers WHERE status = 'active') AS active_drivers,
+  (SELECT COUNT(*) FROM public.invoices) AS total_invoices,
+  (SELECT COALESCE(SUM(net_amount), 0) FROM public.invoices) AS total_revenue,
+  (SELECT COALESCE(SUM(total_amount), 0) FROM public.fuel_entries) AS total_fuel_cost,
+  (SELECT COALESCE(SUM(liters), 0) FROM public.fuel_entries) AS total_fuel_liters,
+  (SELECT COALESCE(SUM(amount), 0) FROM public.maintenance_entries) AS total_maintenance_cost,
+  (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries) AS total_expenses_cost,
+  (
+    (SELECT COALESCE(SUM(net_amount), 0) FROM public.invoices) -
+    (
+      (SELECT COALESCE(SUM(total_amount), 0) FROM public.fuel_entries) +
+      (SELECT COALESCE(SUM(amount), 0) FROM public.maintenance_entries) +
+      (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries)
+    )
+  ) AS net_operating_profit;
+
+
 
 
 
