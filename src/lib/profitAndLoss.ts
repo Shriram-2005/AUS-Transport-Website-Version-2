@@ -389,3 +389,4 @@ export function numberToWords(num: number): string {
   const prefix = isNegative ? 'Rupees (Loss) Minus ' : 'Rupees ';
   return prefix + words.trim() + ' Only.';
 }
+

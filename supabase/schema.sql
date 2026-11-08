@@ -644,7 +644,7 @@ SELECT
   (COALESCE(i.total_freight, 0) - (COALESCE(f.total_fuel, 0) + COALESCE(m.total_maintenance, 0) + COALESCE(e.total_expenses, 0))) AS net_profit
 FROM public.vehicles v
 LEFT JOIN (
-  SELECT vehicle_number, SUM(COALESCE(total_amount, 0)::numeric) AS total_freight
+  SELECT vehicle_number, SUM(COALESCE(net_amount, 0)::numeric) AS total_freight
   FROM public.invoices
   GROUP BY vehicle_number
 ) i ON UPPER(TRIM(i.vehicle_number)) = UPPER(TRIM(v.registration_number))
