@@ -1,8 +1,8 @@
-// Fuel entries store with LocalStorage persistence, live custom events, and Supabase sync
-// Independent from invoices
+// Fuel entries and master bunks store with LocalStorage persistence, live custom events, and Supabase sync
+// Independent from freight invoices
 
 export interface FuelEntry {
-  id: string;
+  id: string;            // Standard RFC-4122 UUID
   vehicleNumber: string; // Registration number in uppercase
   date: string;          // DD-MM-YYYY
   billNumber: string;    // Bunk bill number
@@ -23,18 +23,50 @@ export interface FuelSummaryStats {
 }
 
 const STORAGE_KEY = 'aus_transport_fuel_entries_v1';
+const BUNKS_STORAGE_KEY = 'aus_transport_fuel_bunks_v1';
+
 export const FUEL_ENTRIES_CHANGE_EVENT = 'aus_fuel_entries_changed';
+export const FUEL_BUNKS_CHANGE_EVENT = 'aus_fuel_bunks_changed';
+
+export const DEFAULT_BUNK_NAMES: string[] = [
+  'HP Fuel Station',
+  'Indian Oil (IOCL)',
+  'Bharat Petroleum (BPCL)',
+  'Reliance Petroleum',
+  'Nayara Energy',
+  'Shell Petrol Bunk',
+];
 
 /**
- * Normalizes fuel entry object ensuring clean numbers and uppercase vehicle number.
+ * Standard RFC-4122 UUID v4 generator for both client state and Supabase UUID columns
+ */
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function isValidUUID(str?: string): boolean {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+}
+
+/**
+ * Normalizes fuel entry object ensuring clean numbers, uppercase vehicle number, and valid UUID.
  */
 function normalizeFuelEntry(f: any): FuelEntry {
   const liters = Number(f.liters) || 0;
   const rate = Number(f.ratePerLiter || f.rate_per_liter) || 0;
   const total = Number(f.totalAmount || f.total_amount) || Math.round(liters * rate * 100) / 100;
+  const rawId = f.id ? String(f.id).trim() : '';
 
   return {
-    id: f.id || `fuel-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    id: isValidUUID(rawId) ? rawId : generateUUID(),
     vehicleNumber: (f.vehicleNumber || f.vehicle_number || '').trim().toUpperCase(),
     date: (f.date || f.entry_date || '').trim(),
     billNumber: (f.billNumber || f.bill_number || '').trim(),
@@ -42,7 +74,7 @@ function normalizeFuelEntry(f: any): FuelEntry {
     liters: Math.round(liters * 100) / 100,
     ratePerLiter: Math.round(rate * 100) / 100,
     totalAmount: Math.round(total * 100) / 100,
-    bunkName: f.bunkName || f.bunk_name || '',
+    bunkName: (f.bunkName || f.bunk_name || '').trim(),
     createdAt: f.createdAt || f.created_at || new Date().toISOString(),
     updatedAt: f.updatedAt || f.updated_at || new Date().toISOString(),
   };
@@ -75,11 +107,11 @@ export function saveStoredFuelEntries(entries: FuelEntry[]): void {
   }
 }
 
-export function addStoredFuelEntry(data: Omit<FuelEntry, 'id'>): FuelEntry {
+export function addStoredFuelEntry(data: Omit<FuelEntry, 'id'> & { id?: string }): FuelEntry {
   const entries = getStoredFuelEntries();
   const newEntry = normalizeFuelEntry({
     ...data,
-    id: `fuel-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    id: data.id || generateUUID(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
@@ -108,6 +140,52 @@ export function deleteStoredFuelEntry(id: string): void {
   const entries = getStoredFuelEntries();
   const updated = entries.filter((entry) => entry.id !== id);
   saveStoredFuelEntries(updated);
+}
+
+// ==============================================================================
+// Master Bunk Names Store
+// ==============================================================================
+
+export function getStoredBunkNames(): string[] {
+  if (typeof window === 'undefined') return DEFAULT_BUNK_NAMES;
+  try {
+    const raw = localStorage.getItem(BUNKS_STORAGE_KEY);
+    if (!raw) {
+      saveStoredBunkNames(DEFAULT_BUNK_NAMES);
+      return DEFAULT_BUNK_NAMES;
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return Array.from(new Set(parsed.map((s) => String(s).trim()).filter(Boolean)));
+    }
+    return DEFAULT_BUNK_NAMES;
+  } catch (err) {
+    console.error('Error reading bunk names from localStorage:', err);
+    return DEFAULT_BUNK_NAMES;
+  }
+}
+
+export function saveStoredBunkNames(names: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const clean = Array.from(new Set(names.map((s) => String(s).trim()).filter(Boolean)));
+    localStorage.setItem(BUNKS_STORAGE_KEY, JSON.stringify(clean));
+    window.dispatchEvent(new CustomEvent(FUEL_BUNKS_CHANGE_EVENT, { detail: clean }));
+  } catch (err) {
+    console.error('Error saving bunk names to localStorage:', err);
+  }
+}
+
+export function addStoredBunkName(name: string): string[] {
+  const trimmed = name.trim();
+  if (!trimmed) return getStoredBunkNames();
+  const current = getStoredBunkNames();
+  if (!current.some((b) => b.toLowerCase() === trimmed.toLowerCase())) {
+    const updated = [...current, trimmed];
+    saveStoredBunkNames(updated);
+    return updated;
+  }
+  return current;
 }
 
 /**
@@ -199,7 +277,6 @@ export function numberToWords(num: number): string {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
   const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  const scales = ['', 'Thousand', 'Lakh', 'Crore'];
 
   function convertBelow1000(n: number): string {
     if (n === 0) return '';
@@ -210,7 +287,7 @@ export function numberToWords(num: number): string {
   }
 
   const integerPart = Math.floor(Math.abs(num));
-  if (integerPart === 0) return 'Zero Rupees Only.';
+  if (integerPart === 0) return 'Rupees Zero Only.';
 
   // Indian numbering system: 1,00,00,000 (Crore), 1,00,000 (Lakh), 1,000 (Thousand), 100 (Hundred)
   const crore = Math.floor(integerPart / 10000000);
@@ -228,4 +305,3 @@ export function numberToWords(num: number): string {
 
   return 'Rupees ' + words.trim() + ' Only.';
 }
-

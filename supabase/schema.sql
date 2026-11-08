@@ -473,4 +473,50 @@ DROP POLICY IF EXISTS "Allow anon delete fuel_entries" ON public.fuel_entries;
 CREATE POLICY "Allow anon delete fuel_entries"
   ON public.fuel_entries FOR DELETE TO anon USING (true);
 
+-- ==============================================================================
+-- 13. Master Fuel Bunks Table (Optional Master Station Names)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.fuel_bunks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_fuel_bunks_name ON public.fuel_bunks(name);
+
+ALTER TABLE public.fuel_bunks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow authenticated read fuel_bunks" ON public.fuel_bunks;
+CREATE POLICY "Allow authenticated read fuel_bunks"
+  ON public.fuel_bunks FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated insert fuel_bunks" ON public.fuel_bunks;
+CREATE POLICY "Allow authenticated insert fuel_bunks"
+  ON public.fuel_bunks FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated update fuel_bunks" ON public.fuel_bunks;
+CREATE POLICY "Allow authenticated update fuel_bunks"
+  ON public.fuel_bunks FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated delete fuel_bunks" ON public.fuel_bunks;
+CREATE POLICY "Allow authenticated delete fuel_bunks"
+  ON public.fuel_bunks FOR DELETE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow anon read fuel_bunks" ON public.fuel_bunks;
+CREATE POLICY "Allow anon read fuel_bunks"
+  ON public.fuel_bunks FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert fuel_bunks" ON public.fuel_bunks;
+CREATE POLICY "Allow anon insert fuel_bunks"
+  ON public.fuel_bunks FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update fuel_bunks" ON public.fuel_bunks;
+CREATE POLICY "Allow anon update fuel_bunks"
+  ON public.fuel_bunks FOR UPDATE TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon delete fuel_bunks" ON public.fuel_bunks;
+CREATE POLICY "Allow anon delete fuel_bunks"
+  ON public.fuel_bunks FOR DELETE TO anon USING (true);
+
+
 
