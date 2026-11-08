@@ -417,3 +417,60 @@ AS $$
   ORDER BY d.month_key DESC;
 $$;
 
+-- ==============================================================================
+-- 12. Fuel Entries Table (Independent Bunk Records linked per Vehicle)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.fuel_entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_number TEXT NOT NULL,
+  entry_date TEXT NOT NULL,
+  bill_number TEXT NOT NULL DEFAULT '',
+  fuel_type TEXT NOT NULL DEFAULT 'Diesel' CHECK (fuel_type IN ('Diesel', 'Petrol')),
+  liters NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  rate_per_liter NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  bunk_name TEXT DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_fuel_entries_vehicle ON public.fuel_entries(vehicle_number);
+CREATE INDEX IF NOT EXISTS idx_fuel_entries_date ON public.fuel_entries(entry_date);
+
+ALTER TABLE public.fuel_entries ENABLE ROW LEVEL SECURITY;
+
+-- Authenticated access policies
+DROP POLICY IF EXISTS "Allow authenticated read fuel_entries" ON public.fuel_entries;
+CREATE POLICY "Allow authenticated read fuel_entries"
+  ON public.fuel_entries FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated insert fuel_entries" ON public.fuel_entries;
+CREATE POLICY "Allow authenticated insert fuel_entries"
+  ON public.fuel_entries FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated update fuel_entries" ON public.fuel_entries;
+CREATE POLICY "Allow authenticated update fuel_entries"
+  ON public.fuel_entries FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated delete fuel_entries" ON public.fuel_entries;
+CREATE POLICY "Allow authenticated delete fuel_entries"
+  ON public.fuel_entries FOR DELETE TO authenticated USING (true);
+
+-- Anonymous access policies (for client-side dev & fallback)
+DROP POLICY IF EXISTS "Allow anon read fuel_entries" ON public.fuel_entries;
+CREATE POLICY "Allow anon read fuel_entries"
+  ON public.fuel_entries FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert fuel_entries" ON public.fuel_entries;
+CREATE POLICY "Allow anon insert fuel_entries"
+  ON public.fuel_entries FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update fuel_entries" ON public.fuel_entries;
+CREATE POLICY "Allow anon update fuel_entries"
+  ON public.fuel_entries FOR UPDATE TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon delete fuel_entries" ON public.fuel_entries;
+CREATE POLICY "Allow anon delete fuel_entries"
+  ON public.fuel_entries FOR DELETE TO anon USING (true);
+
+

@@ -6,6 +6,7 @@ import { DashboardHeader } from '@/components/DashboardHeader';
 import { InvoiceManager } from '@/components/InvoiceManager';
 import { VehicleManager } from '@/components/VehicleManager';
 import { DriverManager } from '@/components/DriverManager';
+import { FuelManager } from '@/components/FuelManager';
 import { getDictionary } from '@/i18n/dictionaries';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -276,6 +277,8 @@ export default function DashboardPage() {
             <VehicleManager />
           ) : activeTab === 'drivers' ? (
             <DriverManager />
+          ) : activeTab === 'fuel' ? (
+            <FuelManager />
           ) : (
             <>
               {/* Header Banner */}
