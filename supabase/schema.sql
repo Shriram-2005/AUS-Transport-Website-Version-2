@@ -574,6 +574,64 @@ DROP POLICY IF EXISTS "Allow anon delete maintenance_entries" ON public.maintena
 CREATE POLICY "Allow anon delete maintenance_entries"
   ON public.maintenance_entries FOR DELETE TO anon USING (true);
 
+-- ==============================================================================
+-- 15. Fleet & Business Expenses Table
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.expense_entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_number TEXT NOT NULL DEFAULT 'GENERAL',
+  entry_date TEXT NOT NULL,
+  voucher_number TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT 'FASTag & Highway Toll',
+  description TEXT DEFAULT '',
+  amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  payment_mode TEXT NOT NULL DEFAULT 'Cash',
+  paid_to TEXT DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_expenses_vehicle ON public.expense_entries(vehicle_number);
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON public.expense_entries(entry_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_category ON public.expense_entries(category);
+
+ALTER TABLE public.expense_entries ENABLE ROW LEVEL SECURITY;
+
+-- Authenticated access policies
+DROP POLICY IF EXISTS "Allow authenticated read expense_entries" ON public.expense_entries;
+CREATE POLICY "Allow authenticated read expense_entries"
+  ON public.expense_entries FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated insert expense_entries" ON public.expense_entries;
+CREATE POLICY "Allow authenticated insert expense_entries"
+  ON public.expense_entries FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated update expense_entries" ON public.expense_entries;
+CREATE POLICY "Allow authenticated update expense_entries"
+  ON public.expense_entries FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated delete expense_entries" ON public.expense_entries;
+CREATE POLICY "Allow authenticated delete expense_entries"
+  ON public.expense_entries FOR DELETE TO authenticated USING (true);
+
+-- Anonymous access policies (for client-side dev & fallback)
+DROP POLICY IF EXISTS "Allow anon read expense_entries" ON public.expense_entries;
+CREATE POLICY "Allow anon read expense_entries"
+  ON public.expense_entries FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert expense_entries" ON public.expense_entries;
+CREATE POLICY "Allow anon insert expense_entries"
+  ON public.expense_entries FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update expense_entries" ON public.expense_entries;
+CREATE POLICY "Allow anon update expense_entries"
+  ON public.expense_entries FOR UPDATE TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon delete expense_entries" ON public.expense_entries;
+CREATE POLICY "Allow anon delete expense_entries"
+  ON public.expense_entries FOR DELETE TO anon USING (true);
+
+
 
 
 
