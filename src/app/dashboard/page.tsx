@@ -9,6 +9,7 @@ import { DriverManager } from '@/components/DriverManager';
 import { FuelManager } from '@/components/FuelManager';
 import { MaintenanceManager } from '@/components/MaintenanceManager';
 import { ExpenseManager } from '@/components/ExpenseManager';
+import { ProfitAndLossManager } from '@/components/ProfitAndLossManager';
 import { getDictionary } from '@/i18n/dictionaries';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -285,6 +286,8 @@ export default function DashboardPage() {
             <MaintenanceManager />
           ) : activeTab === 'expenses' ? (
             <ExpenseManager />
+          ) : activeTab === 'profitAndLoss' ? (
+            <ProfitAndLossManager />
           ) : (
             <>
               {/* Header Banner */}

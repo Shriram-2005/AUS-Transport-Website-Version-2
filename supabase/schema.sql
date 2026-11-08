@@ -631,6 +631,40 @@ DROP POLICY IF EXISTS "Allow anon delete expense_entries" ON public.expense_entr
 CREATE POLICY "Allow anon delete expense_entries"
   ON public.expense_entries FOR DELETE TO anon USING (true);
 
+-- ==============================================================================
+-- 16. Profit & Loss Analytics Reporting View & Functions
+-- ==============================================================================
+CREATE OR REPLACE VIEW public.vehicle_profit_and_loss_summary AS
+SELECT
+  v.registration_number,
+  COALESCE(i.total_freight, 0) AS total_revenue,
+  COALESCE(f.total_fuel, 0) AS total_fuel,
+  COALESCE(m.total_maintenance, 0) AS total_maintenance,
+  COALESCE(e.total_expenses, 0) AS total_expenses,
+  (COALESCE(i.total_freight, 0) - (COALESCE(f.total_fuel, 0) + COALESCE(m.total_maintenance, 0) + COALESCE(e.total_expenses, 0))) AS net_profit
+FROM public.vehicles v
+LEFT JOIN (
+  SELECT vehicle_number, SUM(COALESCE(total_amount, 0)::numeric) AS total_freight
+  FROM public.invoices
+  GROUP BY vehicle_number
+) i ON UPPER(TRIM(i.vehicle_number)) = UPPER(TRIM(v.registration_number))
+LEFT JOIN (
+  SELECT vehicle_number, SUM(COALESCE(total_amount, 0)::numeric) AS total_fuel
+  FROM public.fuel_entries
+  GROUP BY vehicle_number
+) f ON UPPER(TRIM(f.vehicle_number)) = UPPER(TRIM(v.registration_number))
+LEFT JOIN (
+  SELECT vehicle_number, SUM(COALESCE(amount, 0)::numeric) AS total_maintenance
+  FROM public.maintenance_entries
+  GROUP BY vehicle_number
+) m ON UPPER(TRIM(m.vehicle_number)) = UPPER(TRIM(v.registration_number))
+LEFT JOIN (
+  SELECT vehicle_number, SUM(COALESCE(amount, 0)::numeric) AS total_expenses
+  FROM public.expense_entries
+  GROUP BY vehicle_number
+) e ON UPPER(TRIM(e.vehicle_number)) = UPPER(TRIM(v.registration_number));
+
+
 
 
 
