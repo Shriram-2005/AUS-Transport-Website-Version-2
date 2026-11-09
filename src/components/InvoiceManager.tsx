@@ -334,8 +334,27 @@ export function InvoiceManager() {
   const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
   const [tripToDelete, setTripToDelete] = useState<number | null>(null);
 
-  // Trip actions: 3-dots menu & move trip states
-  const [openTripMenuId, setOpenTripMenuId] = useState<number | null>(null);
+  // Trip actions: dynamic floating 3-dots menu & move trip states
+  interface TripMenuPosition {
+    top: number;
+    left: number;
+    openUpward: boolean;
+    tripIndex: number;
+    trip: TripItem;
+  }
+  const [activeTripMenu, setActiveTripMenu] = useState<TripMenuPosition | null>(null);
+
+  // Auto-dismiss floating trip menu on window resize or container scroll
+  useEffect(() => {
+    if (!activeTripMenu) return;
+    const handleDismiss = () => setActiveTripMenu(null);
+    window.addEventListener('scroll', handleDismiss, true);
+    window.addEventListener('resize', handleDismiss);
+    return () => {
+      window.removeEventListener('scroll', handleDismiss, true);
+      window.removeEventListener('resize', handleDismiss);
+    };
+  }, [activeTripMenu]);
   const [tripToMove, setTripToMove] = useState<{ tripIndex: number; trip: TripItem } | null>(null);
   const [tripToMoveToNew, setTripToMoveToNew] = useState<{ tripIndex: number; trip: TripItem } | null>(null);
   const [targetBillNumber, setTargetBillNumber] = useState<string>('');
@@ -1378,8 +1397,48 @@ export function InvoiceManager() {
     }));
   };
 
+  const handleToggleTripMenu = (e: React.MouseEvent<HTMLButtonElement>, tripIndex: number, trip: TripItem) => {
+    e.stopPropagation();
+    if (activeTripMenu && activeTripMenu.trip.id === trip.id) {
+      setActiveTripMenu(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const menuWidth = 230;
+    const menuHeight = 175;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+
+    // Decide whether to pop upward or downward dynamically based on available viewport space
+    const openUpward = spaceBelow < menuHeight && spaceAbove > spaceBelow;
+
+    let top = openUpward ? rect.top - menuHeight - 6 : rect.bottom + 6;
+    if (top < 10) top = 10;
+    if (top + menuHeight > window.innerHeight - 10) {
+      top = window.innerHeight - menuHeight - 10;
+    }
+
+    // Dynamic horizontal placement: align to right of 3-dots button, but keep fully inside screen
+    let left = rect.right - menuWidth;
+    if (left < 10) {
+      left = Math.max(10, rect.left);
+    }
+    if (left + menuWidth > window.innerWidth - 10) {
+      left = window.innerWidth - menuWidth - 10;
+    }
+
+    setActiveTripMenu({
+      top,
+      left,
+      openUpward,
+      tripIndex,
+      trip,
+    });
+  };
+
   const handleInitiateMoveToExisting = (tripIndex: number, trip: TripItem) => {
-    setOpenTripMenuId(null);
+    setActiveTripMenu(null);
     const otherBills = bills.filter((b) => String(b.billNumber) !== String(currentBill.billNumber));
     setTargetBillNumber(otherBills[0] ? String(otherBills[0].billNumber) : '');
     setTargetSlotMode('append');
@@ -1390,7 +1449,7 @@ export function InvoiceManager() {
   };
 
   const handleInitiateMoveToNew = (tripIndex: number, trip: TripItem) => {
-    setOpenTripMenuId(null);
+    setActiveTripMenu(null);
     const existingNums = bills
       .map((b) => parseInt(String(b.billNumber).replace(/\D/g, ''), 10))
       .filter((n) => !isNaN(n) && n > 0);
@@ -3665,109 +3724,23 @@ export function InvoiceManager() {
                           </button>
 
                           {/* 3-dots Menu Button */}
-                          <div className="relative inline-flex items-center">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenTripMenuId(openTripMenuId === trip.id ? null : trip.id);
-                              }}
-                              title={`Trip ${idx + 1} Options`}
-                              className={`
-                                p-0.5 rounded-full transition-colors cursor-pointer flex items-center justify-center
-                                ${
-                                  isCurrentActive
-                                    ? 'text-white/80 hover:text-white hover:bg-white/20 dark:text-black/80 dark:hover:text-black dark:hover:bg-black/10'
-                                    : 'text-gray-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800'
-                                }
-                              `}
-                            >
-                              <MoreVertical className="w-3.5 h-3.5" />
-                            </button>
-
-                            {/* Dropdown Menu */}
-                            {openTripMenuId === trip.id && (
-                              <>
-                                {/* Invisible Backdrop to dismiss on click outside */}
-                                <div
-                                  className="fixed inset-0 z-40 cursor-default"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenTripMenuId(null);
-                                  }}
-                                />
-
-                                <div
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl py-1 text-xs text-gray-800 dark:text-zinc-200 animate-in fade-in zoom-in-95 duration-100 text-left font-normal"
-                                >
-                                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-zinc-500 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
-                                    <span>Trip {idx + 1} Actions</span>
-                                    <span className="font-mono text-[9px] text-gray-400">
-                                      {trip.route ? trip.route.slice(0, 12) + '...' : '#' + (idx + 1)}
-                                    </span>
-                                  </div>
-
-                                  {/* Move to Existing Invoice */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleInitiateMoveToExisting(idx, trip)}
-                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-blue-950/40 text-gray-700 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
-                                  >
-                                    <ArrowRightLeft className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                                    <div>
-                                      <div className="font-semibold text-xs">Move to Existing Invoice</div>
-                                      <div className="text-[10px] text-gray-400 dark:text-zinc-500">Transfer to another bill</div>
-                                    </div>
-                                  </button>
-
-                                  {/* Move to New Invoice */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleInitiateMoveToNew(idx, trip)}
-                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-zinc-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer"
-                                  >
-                                    <FilePlus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                                    <div>
-                                      <div className="font-semibold text-xs">Move to New Invoice</div>
-                                      <div className="text-[10px] text-gray-400 dark:text-zinc-500">Create new bill with this trip</div>
-                                    </div>
-                                  </button>
-
-                                  <div className="my-1 border-t border-gray-100 dark:border-zinc-800" />
-
-                                  {/* Delete Trip Option */}
-                                  {isTripOne && currentBill.visibleTrips <= 1 ? (
-                                    <div
-                                      title="Invoice must have at least one trip"
-                                      className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-gray-300 dark:text-zinc-600 cursor-not-allowed select-none"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5 flex-shrink-0 opacity-40" />
-                                      <div>
-                                        <div className="font-semibold text-xs opacity-60">Delete Trip</div>
-                                        <div className="text-[10px] opacity-60">Single trip required</div>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setOpenTripMenuId(null);
-                                        setTripToDelete(trip.id);
-                                      }}
-                                      className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5 flex-shrink-0" />
-                                      <div>
-                                        <div className="font-semibold text-xs">Delete Trip {idx + 1}</div>
-                                        <div className="text-[10px] text-red-400 dark:text-red-500">Remove from this invoice</div>
-                                      </div>
-                                    </button>
-                                  )}
-                                </div>
-                              </>
-                            )}
-                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => handleToggleTripMenu(e, idx, trip)}
+                            title={`Trip ${idx + 1} Options`}
+                            className={`
+                              p-0.5 rounded-full transition-colors cursor-pointer flex items-center justify-center
+                              ${
+                                activeTripMenu?.trip.id === trip.id
+                                  ? 'bg-blue-600 text-white shadow-sm'
+                                  : isCurrentActive
+                                  ? 'text-white/80 hover:text-white hover:bg-white/20 dark:text-black/80 dark:hover:text-black dark:hover:bg-black/10'
+                                  : 'text-gray-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800'
+                              }
+                            `}
+                          >
+                            <MoreVertical className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       );
                     })}
@@ -5584,6 +5557,106 @@ export function InvoiceManager() {
             <X className="w-4 h-4" />
           </button>
         </div>
+      )}
+
+      {/* DYNAMIC FLOATING TRIP 3-DOTS ACTION MENU (Position Fixed, Z-[9999] - Never clipped by overflow containers or behind anything) */}
+      {activeTripMenu !== null && (
+        <>
+          {/* Transparent Backdrop to dismiss on click outside */}
+          <div
+            className="fixed inset-0 z-[9998] cursor-default bg-transparent"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveTripMenu(null);
+            }}
+          />
+
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: `${activeTripMenu.top}px`,
+              left: `${activeTripMenu.left}px`,
+              zIndex: 9999,
+            }}
+            className={`w-56 rounded-xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl py-1 text-xs text-gray-800 dark:text-zinc-200 animate-in fade-in duration-100 text-left font-normal select-none ${
+              activeTripMenu.openUpward ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'
+            }`}
+          >
+            <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-zinc-500 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
+              <span>Trip {activeTripMenu.tripIndex + 1} Actions</span>
+              <span className="font-mono text-[9px] text-gray-400">
+                {activeTripMenu.trip.route ? activeTripMenu.trip.route.slice(0, 12) + '...' : '#' + (activeTripMenu.tripIndex + 1)}
+              </span>
+            </div>
+
+            {/* Move to Existing Invoice */}
+            <button
+              type="button"
+              onClick={() => {
+                const { tripIndex, trip } = activeTripMenu;
+                setActiveTripMenu(null);
+                handleInitiateMoveToExisting(tripIndex, trip);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-blue-950/40 text-gray-700 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-xs">Move to Existing Invoice</div>
+                <div className="text-[10px] text-gray-400 dark:text-zinc-500">Transfer to another bill</div>
+              </div>
+            </button>
+
+            {/* Move to New Invoice */}
+            <button
+              type="button"
+              onClick={() => {
+                const { tripIndex, trip } = activeTripMenu;
+                setActiveTripMenu(null);
+                handleInitiateMoveToNew(tripIndex, trip);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-zinc-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+            >
+              <FilePlus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-xs">Move to New Invoice</div>
+                <div className="text-[10px] text-gray-400 dark:text-zinc-500">Create new bill with this trip</div>
+              </div>
+            </button>
+
+            <div className="my-1 border-t border-gray-100 dark:border-zinc-800" />
+
+            {/* Delete Trip Option */}
+            {activeTripMenu.tripIndex === 0 && currentBill.visibleTrips <= 1 ? (
+              <div
+                title="Invoice must have at least one trip"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-gray-300 dark:text-zinc-600 cursor-not-allowed select-none"
+              >
+                <Trash2 className="w-3.5 h-3.5 flex-shrink-0 opacity-40" />
+                <div>
+                  <div className="font-semibold text-xs opacity-60">Delete Trip</div>
+                  <div className="text-[10px] opacity-60">Single trip required</div>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  const targetId = activeTripMenu.trip.id;
+                  setActiveTripMenu(null);
+                  setTripToDelete(targetId);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5 flex-shrink-0" />
+                <div>
+                  <div className="font-semibold text-xs">Delete Trip {activeTripMenu.tripIndex + 1}</div>
+                  <div className="text-[10px] text-red-400 dark:text-red-500">Remove from this invoice</div>
+                </div>
+              </button>
+            )}
+          </div>
+        </>
       )}
 
       {/* TRIP DELETE WARNING CONFIRMATION MODAL */}
