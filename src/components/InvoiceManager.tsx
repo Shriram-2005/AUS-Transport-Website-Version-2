@@ -39,6 +39,8 @@ import {
   ChevronDown,
   RotateCcw,
   User,
+  ArrowRightLeft,
+  FilePlus,
 } from 'lucide-react';
 import { CustomDatePicker } from './CustomDatePicker';
 import { getStoredVehicles, saveStoredVehicles, updateVehicleKmFromBill, VEHICLES_CHANGE_EVENT, Vehicle } from '@/lib/vehicles';
@@ -331,6 +333,25 @@ export function InvoiceManager() {
   const [availableVehicles, setAvailableVehicles] = useState<Vehicle[]>([]);
   const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
   const [tripToDelete, setTripToDelete] = useState<number | null>(null);
+
+  // Trip actions: 3-dots menu & move trip states
+  const [openTripMenuId, setOpenTripMenuId] = useState<number | null>(null);
+  const [tripToMove, setTripToMove] = useState<{ tripIndex: number; trip: TripItem } | null>(null);
+  const [tripToMoveToNew, setTripToMoveToNew] = useState<{ tripIndex: number; trip: TripItem } | null>(null);
+  const [targetBillNumber, setTargetBillNumber] = useState<string>('');
+  const [targetSlotMode, setTargetSlotMode] = useState<'append' | 'replace'>('append');
+  const [targetReplaceSlot, setTargetReplaceSlot] = useState<number>(1);
+  const [targetSearchQuery, setTargetSearchQuery] = useState<string>('');
+  const [switchAfterMove, setSwitchAfterMove] = useState<boolean>(true);
+  const [moveSubmitting, setMoveSubmitting] = useState<boolean>(false);
+  const [moveFeedbackToast, setMoveFeedbackToast] = useState<{ message: string; billNumber?: string } | null>(null);
+
+  // New Invoice from Trip state
+  const [newBillNumberInput, setNewBillNumberInput] = useState<string>('');
+  const [newBillDateInput, setNewBillDateInput] = useState<string>('');
+  const [newBillVehicleInput, setNewBillVehicleInput] = useState<string>('');
+  const [newBillConsigneePreset, setNewBillConsigneePreset] = useState<string>('broiler_branch');
+  const [newBillError, setNewBillError] = useState<string>('');
 
   // Sync Vehicles from localStorage and custom events
   useEffect(() => {
@@ -1355,6 +1376,306 @@ export function InvoiceManager() {
       trips: reindexed,
       activeTrip: targetIndex + 1,
     }));
+  };
+
+  const handleInitiateMoveToExisting = (tripIndex: number, trip: TripItem) => {
+    setOpenTripMenuId(null);
+    const otherBills = bills.filter((b) => String(b.billNumber) !== String(currentBill.billNumber));
+    setTargetBillNumber(otherBills[0] ? String(otherBills[0].billNumber) : '');
+    setTargetSlotMode('append');
+    setTargetReplaceSlot(1);
+    setTargetSearchQuery('');
+    setSwitchAfterMove(true);
+    setTripToMove({ tripIndex, trip });
+  };
+
+  const handleInitiateMoveToNew = (tripIndex: number, trip: TripItem) => {
+    setOpenTripMenuId(null);
+    const existingNums = bills
+      .map((b) => parseInt(String(b.billNumber).replace(/\D/g, ''), 10))
+      .filter((n) => !isNaN(n) && n > 0);
+    const nextBillNo = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
+
+    setNewBillNumberInput(String(nextBillNo));
+    setNewBillDateInput(trip.date || formatDateToDDMMYYYY(new Date()));
+    setNewBillVehicleInput(currentBill.vehicleNumber || (availableVehicles[0]?.registrationNumber ?? ''));
+    setNewBillConsigneePreset(currentBill.consigneePreset || 'broiler_branch');
+    setNewBillError('');
+    setTripToMoveToNew({ tripIndex, trip });
+  };
+
+  const handleMoveTripToExistingConfirm = async () => {
+    if (!tripToMove) return;
+    const target = bills.find((b) => String(b.billNumber) === String(targetBillNumber));
+    if (!target) {
+      alert('Please select a valid destination invoice.');
+      return;
+    }
+
+    setMoveSubmitting(true);
+    try {
+      const movingTrip = { ...tripToMove.trip };
+      const targetTrips = [...target.trips];
+      let nextTargetVisible = target.visibleTrips;
+
+      if (targetSlotMode === 'append') {
+        if (target.visibleTrips >= 6) {
+          alert(`Invoice #${target.billNumber} already has the maximum of 6 trips. Please choose a trip slot to replace.`);
+          setMoveSubmitting(false);
+          return;
+        }
+        const insertIndex = target.visibleTrips;
+        targetTrips[insertIndex] = {
+          ...movingTrip,
+          id: insertIndex + 1,
+          enabled: true,
+        };
+        nextTargetVisible = insertIndex + 1;
+      } else {
+        const replaceIdx = targetReplaceSlot - 1;
+        targetTrips[replaceIdx] = {
+          ...movingTrip,
+          id: replaceIdx + 1,
+          enabled: true,
+        };
+        if (replaceIdx >= nextTargetVisible) {
+          nextTargetVisible = replaceIdx + 1;
+        }
+      }
+
+      const reindexedTargetTrips = targetTrips.map((t, idx) => ({ ...t, id: idx + 1 }));
+      const updatedTargetBill: BillData = {
+        ...target,
+        visibleTrips: nextTargetVisible,
+        trips: reindexedTargetTrips,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Update current (source) bill
+      let updatedSourceBill: BillData;
+      if (currentBill.visibleTrips > 1) {
+        const sourceIdx = tripToMove.tripIndex;
+        const updatedSourceTrips = [...currentBill.trips];
+        updatedSourceTrips.splice(sourceIdx, 1);
+        updatedSourceTrips.push({
+          id: 6,
+          enabled: true,
+          date: '',
+          dcNo: '',
+          particulars: '',
+          itemName: '',
+          itemQuantity: '',
+          driverId: '',
+          driverName: '',
+          route: '',
+          startingKm: 0,
+          closingKm: 0,
+          rate: 20.27,
+          tollEnabled: false,
+          tollAmount: 0,
+        });
+        const reindexedSourceTrips = updatedSourceTrips.map((t, idx) => ({ ...t, id: idx + 1 }));
+        const nextSourceVis = currentBill.visibleTrips - 1;
+        const nextSourceActive = currentBill.activeTrip > tripToMove.tripIndex + 1
+          ? currentBill.activeTrip - 1
+          : currentBill.activeTrip;
+
+        updatedSourceBill = {
+          ...currentBill,
+          visibleTrips: nextSourceVis,
+          activeTrip: Math.min(Math.max(1, nextSourceActive), nextSourceVis),
+          trips: reindexedSourceTrips,
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        const updatedSourceTrips = [...currentBill.trips];
+        updatedSourceTrips[0] = {
+          id: 1,
+          enabled: true,
+          date: formatDateToDDMMYYYY(new Date()),
+          dcNo: '',
+          particulars: '',
+          itemName: '',
+          itemQuantity: '',
+          driverId: '',
+          driverName: '',
+          route: '',
+          startingKm: 0,
+          closingKm: 0,
+          rate: 20.27,
+          tollEnabled: false,
+          tollAmount: 0,
+        };
+        updatedSourceBill = {
+          ...currentBill,
+          visibleTrips: 1,
+          activeTrip: 1,
+          trips: updatedSourceTrips,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      await saveBillAsync(updatedTargetBill, true);
+
+      if (updatedSourceBill.billNumber) {
+        await saveBillAsync(updatedSourceBill, true);
+      }
+      setCurrentBill(updatedSourceBill);
+
+      setTripToMove(null);
+      setMoveFeedbackToast({
+        message: `Trip ${tripToMove.tripIndex + 1} successfully moved to Invoice #${updatedTargetBill.billNumber}!`,
+        billNumber: String(updatedTargetBill.billNumber),
+      });
+      setTimeout(() => setMoveFeedbackToast(null), 6000);
+
+      if (switchAfterMove) {
+        openEditor(updatedTargetBill);
+      }
+    } catch (err) {
+      console.error('Error moving trip to existing invoice:', err);
+      alert('An error occurred while moving the trip. Please try again.');
+    } finally {
+      setMoveSubmitting(false);
+    }
+  };
+
+  const handleMoveTripToNewConfirm = async () => {
+    if (!tripToMoveToNew) return;
+    const cleanBillNo = newBillNumberInput.trim();
+    if (!cleanBillNo) {
+      setNewBillError('Please enter a valid bill number.');
+      return;
+    }
+    if (bills.some((b) => String(b.billNumber) === cleanBillNo)) {
+      setNewBillError(`Invoice #${cleanBillNo} already exists. Please choose a different number.`);
+      return;
+    }
+
+    setMoveSubmitting(true);
+    try {
+      const movingTrip = { ...tripToMoveToNew.trip };
+      const presetObj = CONSIGNEE_PRESETS.find((p) => p.id === newBillConsigneePreset) || CONSIGNEE_PRESETS[0];
+
+      const newBill: BillData = {
+        billNumber: cleanBillNo,
+        date: newBillDateInput || formatDateToDDMMYYYY(new Date()),
+        vehicleNumber: newBillVehicleInput || currentBill.vehicleNumber || (availableVehicles[0]?.registrationNumber ?? ''),
+        consigneePreset: presetObj.id,
+        consigneeName: presetObj.name,
+        consigneeAddress: presetObj.address,
+        consigneeGst: presetObj.gst,
+        consigneeOverride: false,
+        activeTrip: 1,
+        visibleTrips: 1,
+        trips: [
+          {
+            ...movingTrip,
+            id: 1,
+            enabled: true,
+          },
+          { id: 2, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
+          { id: 3, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
+          { id: 4, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
+          { id: 5, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
+          { id: 6, enabled: true, date: '', dcNo: '', particulars: '', itemName: '', itemQuantity: '', driverId: '', driverName: '', route: '', startingKm: 0, closingKm: 0, rate: 20.27, tollEnabled: false, tollAmount: 0 },
+        ],
+        keralaRtoEnabled: false,
+        keralaRtoMultiplier: 0,
+        keralaRtoAmount: 0,
+        dieselAvgRate: 0,
+        rupeesInWordsMode: 'auto',
+        rupeesInWordsText: '',
+        status: 'unpaid',
+        locked: false,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Update current (source) bill
+      let updatedSourceBill: BillData;
+      if (currentBill.visibleTrips > 1) {
+        const sourceIdx = tripToMoveToNew.tripIndex;
+        const updatedSourceTrips = [...currentBill.trips];
+        updatedSourceTrips.splice(sourceIdx, 1);
+        updatedSourceTrips.push({
+          id: 6,
+          enabled: true,
+          date: '',
+          dcNo: '',
+          particulars: '',
+          itemName: '',
+          itemQuantity: '',
+          driverId: '',
+          driverName: '',
+          route: '',
+          startingKm: 0,
+          closingKm: 0,
+          rate: 20.27,
+          tollEnabled: false,
+          tollAmount: 0,
+        });
+        const reindexedSourceTrips = updatedSourceTrips.map((t, idx) => ({ ...t, id: idx + 1 }));
+        const nextSourceVis = currentBill.visibleTrips - 1;
+        const nextSourceActive = currentBill.activeTrip > tripToMoveToNew.tripIndex + 1
+          ? currentBill.activeTrip - 1
+          : currentBill.activeTrip;
+
+        updatedSourceBill = {
+          ...currentBill,
+          visibleTrips: nextSourceVis,
+          activeTrip: Math.min(Math.max(1, nextSourceActive), nextSourceVis),
+          trips: reindexedSourceTrips,
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        const updatedSourceTrips = [...currentBill.trips];
+        updatedSourceTrips[0] = {
+          id: 1,
+          enabled: true,
+          date: formatDateToDDMMYYYY(new Date()),
+          dcNo: '',
+          particulars: '',
+          itemName: '',
+          itemQuantity: '',
+          driverId: '',
+          driverName: '',
+          route: '',
+          startingKm: 0,
+          closingKm: 0,
+          rate: 20.27,
+          tollEnabled: false,
+          tollAmount: 0,
+        };
+        updatedSourceBill = {
+          ...currentBill,
+          visibleTrips: 1,
+          activeTrip: 1,
+          trips: updatedSourceTrips,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      await saveBillAsync(newBill, true);
+
+      if (updatedSourceBill.billNumber) {
+        await saveBillAsync(updatedSourceBill, true);
+      }
+      setCurrentBill(updatedSourceBill);
+
+      setTripToMoveToNew(null);
+      setMoveFeedbackToast({
+        message: `New Invoice #${newBill.billNumber} created with Trip 1!`,
+        billNumber: String(newBill.billNumber),
+      });
+      setTimeout(() => setMoveFeedbackToast(null), 6000);
+
+      openEditor(newBill);
+    } catch (err) {
+      console.error('Error creating new invoice from trip:', err);
+      alert('An error occurred while creating the new invoice.');
+    } finally {
+      setMoveSubmitting(false);
+    }
   };
 
   // Save to Supabase (direct match with reference saveBillToFirestore)
@@ -3322,7 +3643,7 @@ export function InvoiceManager() {
                         <div
                           key={trip.id}
                           className={`
-                            inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all select-none
+                            relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all select-none
                             ${
                               isCurrentActive
                                 ? 'bg-black text-white dark:bg-white dark:text-black font-bold shadow-sm'
@@ -3343,36 +3664,110 @@ export function InvoiceManager() {
                             ) : null}
                           </button>
 
-                          {/* Trip 1 has greyed unaccessible X icon */}
-                          {isTripOne ? (
-                            <span
-                              title="Trip 1 is required and cannot be removed"
-                              className="text-gray-300 dark:text-zinc-600 opacity-40 cursor-not-allowed select-none p-0.5"
-                              aria-disabled="true"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </span>
-                          ) : (
-                            /* Trips 2 to 6 have active X icon opening confirmation modal */
+                          {/* 3-dots Menu Button */}
+                          <div className="relative inline-flex items-center">
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setTripToDelete(trip.id);
+                                setOpenTripMenuId(openTripMenuId === trip.id ? null : trip.id);
                               }}
-                              title={`Delete Trip ${idx + 1}`}
+                              title={`Trip ${idx + 1} Options`}
                               className={`
-                                p-0.5 rounded-full transition-colors cursor-pointer
+                                p-0.5 rounded-full transition-colors cursor-pointer flex items-center justify-center
                                 ${
                                   isCurrentActive
-                                    ? 'text-white/70 hover:text-white hover:bg-white/20 dark:text-black/70 dark:hover:text-black dark:hover:bg-black/10'
-                                    : 'text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40'
+                                    ? 'text-white/80 hover:text-white hover:bg-white/20 dark:text-black/80 dark:hover:text-black dark:hover:bg-black/10'
+                                    : 'text-gray-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800'
                                 }
                               `}
                             >
-                              <X className="w-3.5 h-3.5" />
+                              <MoreVertical className="w-3.5 h-3.5" />
                             </button>
-                          )}
+
+                            {/* Dropdown Menu */}
+                            {openTripMenuId === trip.id && (
+                              <>
+                                {/* Invisible Backdrop to dismiss on click outside */}
+                                <div
+                                  className="fixed inset-0 z-40 cursor-default"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenTripMenuId(null);
+                                  }}
+                                />
+
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl py-1 text-xs text-gray-800 dark:text-zinc-200 animate-in fade-in zoom-in-95 duration-100 text-left font-normal"
+                                >
+                                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-zinc-500 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
+                                    <span>Trip {idx + 1} Actions</span>
+                                    <span className="font-mono text-[9px] text-gray-400">
+                                      {trip.route ? trip.route.slice(0, 12) + '...' : '#' + (idx + 1)}
+                                    </span>
+                                  </div>
+
+                                  {/* Move to Existing Invoice */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInitiateMoveToExisting(idx, trip)}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-blue-950/40 text-gray-700 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                                  >
+                                    <ArrowRightLeft className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                                    <div>
+                                      <div className="font-semibold text-xs">Move to Existing Invoice</div>
+                                      <div className="text-[10px] text-gray-400 dark:text-zinc-500">Transfer to another bill</div>
+                                    </div>
+                                  </button>
+
+                                  {/* Move to New Invoice */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInitiateMoveToNew(idx, trip)}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-zinc-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+                                  >
+                                    <FilePlus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                                    <div>
+                                      <div className="font-semibold text-xs">Move to New Invoice</div>
+                                      <div className="text-[10px] text-gray-400 dark:text-zinc-500">Create new bill with this trip</div>
+                                    </div>
+                                  </button>
+
+                                  <div className="my-1 border-t border-gray-100 dark:border-zinc-800" />
+
+                                  {/* Delete Trip Option */}
+                                  {isTripOne && currentBill.visibleTrips <= 1 ? (
+                                    <div
+                                      title="Invoice must have at least one trip"
+                                      className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-gray-300 dark:text-zinc-600 cursor-not-allowed select-none"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 flex-shrink-0 opacity-40" />
+                                      <div>
+                                        <div className="font-semibold text-xs opacity-60">Delete Trip</div>
+                                        <div className="text-[10px] opacity-60">Single trip required</div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenTripMenuId(null);
+                                        setTripToDelete(trip.id);
+                                      }}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 flex-shrink-0" />
+                                      <div>
+                                        <div className="font-semibold text-xs">Delete Trip {idx + 1}</div>
+                                        <div className="text-[10px] text-red-400 dark:text-red-500">Remove from this invoice</div>
+                                      </div>
+                                    </button>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -4713,6 +5108,481 @@ export function InvoiceManager() {
               )}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* MOVE TRIP TO EXISTING INVOICE MODAL */}
+      {tripToMove !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-zinc-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <ArrowRightLeft className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white m-0">
+                    Move Trip {tripToMove.tripIndex + 1} to Existing Invoice
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-zinc-400 m-0">
+                    Transfer this trip details from Bill #{currentBill.billNumber || '(Current)'} to another invoice
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTripToMove(null)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Trip Preview Card */}
+            <div className="mt-4 p-3 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-gray-200 dark:border-zinc-700/60 text-xs">
+              <div className="font-semibold text-gray-700 dark:text-zinc-300 mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Trip {tripToMove.tripIndex + 1} Details to Transfer:</span>
+                </span>
+                <span className="font-mono text-[11px] text-gray-500">
+                  {tripToMove.trip.date || 'No Date'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-gray-500 dark:text-zinc-400">Route: </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {tripToMove.trip.route || '-'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500 dark:text-zinc-400">Driver: </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {tripToMove.trip.driverName || '-'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500 dark:text-zinc-400">Distance: </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {Math.max(0, (Number(tripToMove.trip.closingKm) || 0) - (Number(tripToMove.trip.startingKm) || 0))} KM
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500 dark:text-zinc-400">Particulars: </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {tripToMove.trip.particulars || tripToMove.trip.itemName || '-'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Target Invoice Selection */}
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-zinc-300 mb-1.5">
+                  Select Destination Invoice:
+                </label>
+
+                {/* Quick Filter Search if many bills */}
+                {bills.filter((b) => String(b.billNumber) !== String(currentBill.billNumber)).length > 5 && (
+                  <div className="relative mb-2">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search by Bill # or Vehicle..."
+                      value={targetSearchQuery}
+                      onChange={(e) => setTargetSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
+
+                {bills.filter((b) => String(b.billNumber) !== String(currentBill.billNumber)).length === 0 ? (
+                  <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-800 dark:text-amber-300">
+                    <p className="font-semibold mb-1">No other existing invoices found.</p>
+                    <p className="mb-3">There are no other invoices in the system to move this trip into.</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const moving = tripToMove;
+                        setTripToMove(null);
+                        handleInitiateMoveToNew(moving.tripIndex, moving.trip);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <FilePlus className="w-3.5 h-3.5" />
+                      <span>Move to a New Invoice instead</span>
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={targetBillNumber}
+                    onChange={(e) => setTargetBillNumber(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
+                    {bills
+                      .filter((b) => String(b.billNumber) !== String(currentBill.billNumber))
+                      .filter((b) => {
+                        if (!targetSearchQuery.trim()) return true;
+                        const q = targetSearchQuery.toLowerCase();
+                        return (
+                          String(b.billNumber).toLowerCase().includes(q) ||
+                          (b.vehicleNumber && b.vehicleNumber.toLowerCase().includes(q))
+                        );
+                      })
+                      .map((b) => (
+                        <option key={b.billNumber} value={b.billNumber}>
+                          Bill #{b.billNumber} | {b.vehicleNumber || 'No Vehicle'} | {b.date} ({b.visibleTrips}/6 Trips)
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Target Bill Placement Settings */}
+              {(() => {
+                const selectedTarget = bills.find((b) => String(b.billNumber) === String(targetBillNumber));
+                if (!selectedTarget) return null;
+
+                const isFull = selectedTarget.visibleTrips >= 6;
+
+                return (
+                  <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-gray-800 dark:text-zinc-200">
+                        Placement in Bill #{selectedTarget.billNumber}:
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        isFull ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300' : 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300'
+                      }`}>
+                        {selectedTarget.visibleTrips} / 6 Trips used
+                      </span>
+                    </div>
+
+                    {!isFull ? (
+                      <div className="space-y-2">
+                        <label className="flex items-start gap-2.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="targetSlotMode"
+                            value="append"
+                            checked={targetSlotMode === 'append'}
+                            onChange={() => setTargetSlotMode('append')}
+                            className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                          />
+                          <div>
+                            <div className="text-xs font-semibold text-gray-900 dark:text-white">
+                              Add as new Trip {selectedTarget.visibleTrips + 1}
+                            </div>
+                            <div className="text-[11px] text-gray-500 dark:text-zinc-400">
+                              Appends this trip. Bill #{selectedTarget.billNumber} will have {selectedTarget.visibleTrips + 1} trips.
+                            </div>
+                          </div>
+                        </label>
+
+                        <label className="flex items-start gap-2.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="targetSlotMode"
+                            value="replace"
+                            checked={targetSlotMode === 'replace'}
+                            onChange={() => setTargetSlotMode('replace')}
+                            className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                          />
+                          <div>
+                            <div className="text-xs font-semibold text-gray-900 dark:text-white">
+                              Replace an existing trip slot
+                            </div>
+                            <div className="text-[11px] text-gray-500 dark:text-zinc-400">
+                              Overwrites the designated trip slot in destination bill.
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-[11px] text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
+                        Bill #{selectedTarget.billNumber} already has 6 trips (maximum). You must designate which existing trip to replace:
+                      </div>
+                    )}
+
+                    {(targetSlotMode === 'replace' || isFull) && (
+                      <div className="pt-2 border-t border-gray-200 dark:border-zinc-700">
+                        <label className="block text-[11px] font-bold text-gray-700 dark:text-zinc-300 mb-1">
+                          Designated trip slot to overwrite:
+                        </label>
+                        <select
+                          value={targetReplaceSlot}
+                          onChange={(e) => setTargetReplaceSlot(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white font-medium"
+                        >
+                          {selectedTarget.trips.slice(0, selectedTarget.visibleTrips).map((t, idx) => (
+                            <option key={t.id} value={idx + 1}>
+                              Trip {idx + 1} ({t.route ? t.route : 'No Route'} - {t.driverName || 'No Driver'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Switch view checkbox */}
+                    <div className="pt-2 border-t border-gray-200 dark:border-zinc-700">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 dark:text-zinc-300">
+                        <input
+                          type="checkbox"
+                          checked={switchAfterMove}
+                          onChange={(e) => setSwitchAfterMove(e.target.checked)}
+                          className="rounded text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>Switch and open destination Invoice #{selectedTarget.billNumber} after moving</span>
+                      </label>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="mt-6 flex items-center justify-end gap-3 pt-4 border-t border-gray-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setTripToMove(null)}
+                disabled={moveSubmitting}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  moveSubmitting ||
+                  !targetBillNumber ||
+                  bills.filter((b) => String(b.billNumber) !== String(currentBill.billNumber)).length === 0
+                }
+                onClick={handleMoveTripToExistingConfirm}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white active:scale-95 transition-all shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {moveSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Moving Trip...</span>
+                  </>
+                ) : (
+                  <>
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    <span>Confirm & Move Trip</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MOVE TRIP TO NEW INVOICE MODAL */}
+      {tripToMoveToNew !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-zinc-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <FilePlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white m-0">
+                    Create New Invoice from Trip {tripToMoveToNew.tripIndex + 1}
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-zinc-400 m-0">
+                    Move this trip into a brand new invoice bill as Trip 1
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTripToMoveToNew(null)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Trip Preview Card */}
+            <div className="mt-4 p-3 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-gray-200 dark:border-zinc-700/60 text-xs">
+              <div className="font-semibold text-gray-700 dark:text-zinc-300 mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Trip {tripToMoveToNew.tripIndex + 1} Moving to New Bill:</span>
+                </span>
+                <span className="font-mono text-[11px] text-gray-500">
+                  {tripToMoveToNew.trip.date || 'No Date'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-gray-500 dark:text-zinc-400">Route: </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {tripToMoveToNew.trip.route || '-'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500 dark:text-zinc-400">Driver: </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {tripToMoveToNew.trip.driverName || '-'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500 dark:text-zinc-400">Distance: </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {Math.max(0, (Number(tripToMoveToNew.trip.closingKm) || 0) - (Number(tripToMoveToNew.trip.startingKm) || 0))} KM
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500 dark:text-zinc-400">Particulars: </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {tripToMoveToNew.trip.particulars || tripToMoveToNew.trip.itemName || '-'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* New Invoice Form Fields */}
+            <div className="mt-4 space-y-3.5">
+              {newBillError && (
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-xs text-red-600 dark:text-red-400 font-medium">
+                  {newBillError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 dark:text-zinc-300 mb-1">
+                    New Bill / Invoice Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newBillNumberInput}
+                    onChange={(e) => {
+                      setNewBillNumberInput(e.target.value);
+                      setNewBillError('');
+                    }}
+                    placeholder="e.g. 105"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 dark:text-zinc-300 mb-1">
+                    Invoice Date
+                  </label>
+                  <input
+                    type="text"
+                    value={newBillDateInput}
+                    onChange={(e) => setNewBillDateInput(e.target.value)}
+                    placeholder="DD-MM-YYYY"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-zinc-300 mb-1">
+                  Vehicle Registration Number
+                </label>
+                <select
+                  value={newBillVehicleInput}
+                  onChange={(e) => setNewBillVehicleInput(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+                  {availableVehicles.map((v) => (
+                    <option key={v.id} value={v.registrationNumber}>
+                      {v.registrationNumber} {v.model ? `(${v.model})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-zinc-300 mb-1">
+                  Consignee Branch Preset
+                </label>
+                <select
+                  value={newBillConsigneePreset}
+                  onChange={(e) => setNewBillConsigneePreset(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+                  {CONSIGNEE_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/40 text-[11px] text-emerald-800 dark:text-emerald-300">
+                Trip {tripToMoveToNew.tripIndex + 1} will become Trip 1 of the new invoice #{newBillNumberInput || '...'}. It will be removed from current Bill #{currentBill.billNumber || '(Current)'}, and the editor will switch to the new bill immediately.
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="mt-6 flex items-center justify-end gap-3 pt-4 border-t border-gray-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setTripToMoveToNew(null)}
+                disabled={moveSubmitting}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={moveSubmitting || !newBillNumberInput.trim()}
+                onClick={handleMoveTripToNewConfirm}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 transition-all shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {moveSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Creating & Moving...</span>
+                  </>
+                ) : (
+                  <>
+                    <FilePlus className="w-3.5 h-3.5" />
+                    <span>Create Invoice & Move Trip</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MOVE FEEDBACK FLOATING TOAST */}
+      {moveFeedbackToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 bg-black text-white dark:bg-white dark:text-black rounded-xl shadow-2xl border border-gray-700 dark:border-gray-200 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 dark:text-emerald-600 flex-shrink-0" />
+          <span className="text-xs font-semibold">{moveFeedbackToast.message}</span>
+          {moveFeedbackToast.billNumber && (
+            <button
+              type="button"
+              onClick={() => {
+                const target = bills.find((b) => String(b.billNumber) === moveFeedbackToast.billNumber);
+                if (target) openEditor(target);
+                setMoveFeedbackToast(null);
+              }}
+              className="ml-2 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+            >
+              View Bill #{moveFeedbackToast.billNumber}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setMoveFeedbackToast(null)}
+            className="p-1 rounded-full opacity-70 hover:opacity-100 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 

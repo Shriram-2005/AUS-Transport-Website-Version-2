@@ -1142,3 +1142,4 @@ export function OverviewManager({ onNavigate }: OverviewManagerProps) {
     </div>
   );
 }
+
