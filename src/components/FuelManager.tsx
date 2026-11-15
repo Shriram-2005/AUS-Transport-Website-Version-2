@@ -64,6 +64,27 @@ export function FuelManager() {
   const [historyVehicle, setHistoryVehicle] = useState<string | null>(null);
   const [statementVehicle, setStatementVehicle] = useState<string | null>(null);
 
+  // Dynamic floating 3-dot action menu for entries
+  interface FuelMenuPosition {
+    top: number;
+    left: number;
+    openUpward: boolean;
+    entry: FuelEntry;
+  }
+  const [activeEntryMenu, setActiveEntryMenu] = useState<FuelMenuPosition | null>(null);
+
+  // Auto-dismiss floating menu on window resize or container scroll
+  useEffect(() => {
+    if (!activeEntryMenu) return;
+    const handleDismiss = () => setActiveEntryMenu(null);
+    window.addEventListener('scroll', handleDismiss, true);
+    window.addEventListener('resize', handleDismiss);
+    return () => {
+      window.removeEventListener('scroll', handleDismiss, true);
+      window.removeEventListener('resize', handleDismiss);
+    };
+  }, [activeEntryMenu]);
+
   // Form states
   const [formVehicleNumber, setFormVehicleNumber] = useState('');
   const [formDate, setFormDate] = useState<string>(getTodayDDMMYYYY());
@@ -281,6 +302,44 @@ export function FuelManager() {
     setFormError('');
     setIsAddModalOpen(true);
     setActiveMenuId(null);
+  };
+
+  // Toggle 3-dot entry menu with dynamic viewport space detection
+  const handleToggleEntryMenu = (e: React.MouseEvent<HTMLButtonElement>, entry: FuelEntry) => {
+    e.stopPropagation();
+    if (activeEntryMenu && activeEntryMenu.entry.id === entry.id) {
+      setActiveEntryMenu(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const menuWidth = 160;
+    const menuHeight = 90;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+
+    const openUpward = spaceBelow < menuHeight && spaceAbove > spaceBelow;
+
+    let top = openUpward ? rect.top - menuHeight - 4 : rect.bottom + 4;
+    if (top < 10) top = 10;
+    if (top + menuHeight > window.innerHeight - 10) {
+      top = window.innerHeight - menuHeight - 10;
+    }
+
+    let left = rect.right - menuWidth;
+    if (left < 10) {
+      left = Math.max(10, rect.left);
+    }
+    if (left + menuWidth > window.innerWidth - 10) {
+      left = window.innerWidth - menuWidth - 10;
+    }
+
+    setActiveEntryMenu({
+      top,
+      left,
+      openUpward,
+      entry,
+    });
   };
 
   // Open Edit Fuel Entry modal
@@ -879,12 +938,13 @@ export function FuelManager() {
                           <th className="py-2.5 px-2.5 text-center font-semibold">Fuel</th>
                           <th className="py-2.5 px-3 text-right font-semibold">Liters</th>
                           <th className="py-2.5 px-3 text-right font-semibold">Total (Rs)</th>
+                          <th className="py-2.5 px-2 text-center font-semibold w-10">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-zinc-800/60">
                         {recentEntries.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="py-3 px-3 text-center text-xs text-gray-400 dark:text-zinc-500 italic">
+                            <td colSpan={6} className="py-3 px-3 text-center text-xs text-gray-400 dark:text-zinc-500 italic">
                               No fuel entries recorded yet
                             </td>
                           </tr>
@@ -918,6 +978,20 @@ export function FuelManager() {
                               </td>
                               <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-900 dark:text-zinc-100 text-xs">
                                 Rs.{Math.round(entry.totalAmount).toLocaleString('en-IN')}
+                              </td>
+                              <td className="py-2 px-2 text-center">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleToggleEntryMenu(e, entry)}
+                                  title="Fuel Entry Options"
+                                  className={`p-1 rounded-md transition-colors cursor-pointer inline-flex items-center justify-center ${
+                                    activeEntryMenu?.entry.id === entry.id
+                                      ? 'bg-blue-600 text-white shadow-sm'
+                                      : 'text-gray-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-200/70 dark:hover:bg-zinc-700/60'
+                                  }`}
+                                >
+                                  <MoreVertical className="w-3.5 h-3.5" />
+                                </button>
                               </td>
                             </tr>
                           ))
@@ -1306,31 +1380,19 @@ export function FuelManager() {
                         <td className="py-3 px-3.5 text-gray-600 dark:text-zinc-300 truncate max-w-[150px]">
                           {entry.bunkName || '-'}
                         </td>
-                        <td className="py-3 px-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleOpenEditModal(entry);
-                                setHistoryVehicle(null);
-                              }}
-                              className="p-1.5 rounded text-gray-500 hover:text-blue-600 cursor-pointer"
-                              title="Edit"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDeletingEntry(entry);
-                                setHistoryVehicle(null);
-                              }}
-                              className="p-1.5 rounded text-gray-500 hover:text-red-600 cursor-pointer"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                        <td className="py-3 px-3.5 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={(e) => handleToggleEntryMenu(e, entry)}
+                            title="Fuel Entry Options"
+                            className={`p-1.5 rounded-md transition-colors cursor-pointer inline-flex items-center justify-center ${
+                              activeEntryMenu?.entry.id === entry.id
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'text-gray-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800'
+                            }`}
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -1486,6 +1548,59 @@ export function FuelManager() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Dynamic Floating 3-Dot Entry Menu (Fixed overlay, Z-[9999], never clipped or behind anything) */}
+      {activeEntryMenu !== null && (
+        <>
+          <div
+            className="fixed inset-0 z-[9998] cursor-default bg-transparent"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveEntryMenu(null);
+            }}
+          />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: `${activeEntryMenu.top}px`,
+              left: `${activeEntryMenu.left}px`,
+              zIndex: 9999,
+            }}
+            className={`w-40 rounded-xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl py-1 text-xs text-gray-800 dark:text-zinc-200 animate-in fade-in duration-100 text-left font-normal select-none ${
+              activeEntryMenu.openUpward ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const entry = activeEntryMenu.entry;
+                setActiveEntryMenu(null);
+                handleOpenEditModal(entry);
+                setHistoryVehicle(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-blue-50 dark:hover:bg-blue-950/40 text-gray-700 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer font-medium"
+            >
+              <Pencil className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <span>Edit Entry</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const entry = activeEntryMenu.entry;
+                setActiveEntryMenu(null);
+                setDeletingEntry(entry);
+                setHistoryVehicle(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 transition-colors cursor-pointer font-medium"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-600 dark:text-red-400 flex-shrink-0" />
+              <span>Delete Entry</span>
+            </button>
+          </div>
+        </>
       )}
 
       {/* =========================================================================
