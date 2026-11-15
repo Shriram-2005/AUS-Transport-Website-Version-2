@@ -646,7 +646,7 @@ export function ProfitAndLossManager() {
           {/* Quick Metrics Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-200 dark:border-zinc-800">
             <div className="p-3 rounded-xl bg-white dark:bg-zinc-800 border border-gray-100 dark:border-zinc-700">
-              <span className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase">Revenue</span>
+              <span className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase" title="Toll expenses are excluded from freight revenue">Revenue (excl. Toll)</span>
               <p className="text-base font-black font-mono text-gray-900 dark:text-zinc-100">
                 Rs.{fleetPnl.totalRevenue.toLocaleString('en-IN')}
               </p>
@@ -796,7 +796,7 @@ export function ProfitAndLossManager() {
                 {/* Middle Financial Stats Bar */}
                 <div className="mt-4 pt-3 border-t border-gray-100 dark:border-zinc-800 grid grid-cols-5 gap-2 text-center text-xs">
                   <div className="p-2 rounded-lg bg-gray-50/80 dark:bg-zinc-800/40">
-                    <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-zinc-400">Revenue</span>
+                    <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-zinc-400" title="Toll expenses are excluded from freight revenue">Revenue (excl. Toll)</span>
                     <p className="font-mono font-bold text-gray-900 dark:text-zinc-100 text-xs">Rs.{pnl.revenue.toLocaleString('en-IN')}</p>
                   </div>
                   <div className="p-2 rounded-lg bg-gray-50/80 dark:bg-zinc-800/40">
@@ -1029,7 +1029,7 @@ export function ProfitAndLossManager() {
               {/* Financial Snapshot */}
               <div className="p-4 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/60 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-600 dark:text-zinc-400">Freight Revenue:</span>
+                  <span className="text-gray-600 dark:text-zinc-400">Freight Revenue (excl. Toll):</span>
                   <span className="font-mono font-bold text-gray-900 dark:text-zinc-100">Rs.{statementPnl.revenue.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
@@ -1117,7 +1117,7 @@ export function ProfitAndLossManager() {
               </thead>
               <tbody>
                 <tr>
-                  <td className="font-bold">A. Total Operating Revenue (Freight Invoices)</td>
+                  <td className="font-bold">A. Total Operating Freight Revenue (Toll excluded)</td>
                   <td className="text-right font-mono font-bold">
                     Rs.{statementPnl.revenue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>

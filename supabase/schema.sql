@@ -644,7 +644,22 @@ SELECT
   (COALESCE(i.total_freight, 0) - (COALESCE(f.total_fuel, 0) + COALESCE(m.total_maintenance, 0) + COALESCE(e.total_expenses, 0))) AS net_profit
 FROM public.vehicles v
 LEFT JOIN (
-  SELECT vehicle_number, SUM(COALESCE(net_amount, 0)::numeric) AS total_freight
+  SELECT
+    vehicle_number,
+    SUM(
+      COALESCE(net_amount, 0)::numeric - COALESCE((
+        SELECT SUM(
+          CASE
+            WHEN (t->>'tollEnabled') = 'true' AND (t->>'tollAmount') ~ '^-?[0-9]+(\.[0-9]+)?$'
+            THEN (t->>'tollAmount')::numeric
+            ELSE 0
+          END
+        )
+        FROM jsonb_array_elements(
+          CASE WHEN jsonb_typeof(trips) = 'array' THEN trips ELSE '[]'::jsonb END
+        ) AS t
+      ), 0)
+    ) AS total_freight
   FROM public.invoices
   GROUP BY vehicle_number
 ) i ON UPPER(TRIM(i.vehicle_number)) = UPPER(TRIM(v.registration_number))
@@ -673,13 +688,45 @@ SELECT
   (SELECT COUNT(*) FROM public.vehicles) AS total_vehicles,
   (SELECT COUNT(*) FROM public.drivers WHERE status = 'active') AS active_drivers,
   (SELECT COUNT(*) FROM public.invoices) AS total_invoices,
-  (SELECT COALESCE(SUM(net_amount), 0) FROM public.invoices) AS total_revenue,
+  (
+    SELECT COALESCE(SUM(
+      COALESCE(net_amount, 0)::numeric - COALESCE((
+        SELECT SUM(
+          CASE
+            WHEN (t->>'tollEnabled') = 'true' AND (t->>'tollAmount') ~ '^-?[0-9]+(\.[0-9]+)?$'
+            THEN (t->>'tollAmount')::numeric
+            ELSE 0
+          END
+        )
+        FROM jsonb_array_elements(
+          CASE WHEN jsonb_typeof(trips) = 'array' THEN trips ELSE '[]'::jsonb END
+        ) AS t
+      ), 0)
+    ), 0)
+    FROM public.invoices
+  ) AS total_revenue,
   (SELECT COALESCE(SUM(total_amount), 0) FROM public.fuel_entries) AS total_fuel_cost,
   (SELECT COALESCE(SUM(liters), 0) FROM public.fuel_entries) AS total_fuel_liters,
   (SELECT COALESCE(SUM(amount), 0) FROM public.maintenance_entries) AS total_maintenance_cost,
   (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries WHERE UPPER(category) NOT LIKE '%TOLL%' AND UPPER(category) NOT LIKE '%FASTAG%') AS total_expenses_cost,
   (
-    (SELECT COALESCE(SUM(net_amount), 0) FROM public.invoices) -
+    (
+      SELECT COALESCE(SUM(
+        COALESCE(net_amount, 0)::numeric - COALESCE((
+          SELECT SUM(
+            CASE
+              WHEN (t->>'tollEnabled') = 'true' AND (t->>'tollAmount') ~ '^-?[0-9]+(\.[0-9]+)?$'
+              THEN (t->>'tollAmount')::numeric
+              ELSE 0
+            END
+          )
+          FROM jsonb_array_elements(
+            CASE WHEN jsonb_typeof(trips) = 'array' THEN trips ELSE '[]'::jsonb END
+          ) AS t
+        ), 0)
+      ), 0)
+      FROM public.invoices
+    ) -
     (
       (SELECT COALESCE(SUM(total_amount), 0) FROM public.fuel_entries) +
       (SELECT COALESCE(SUM(amount), 0) FROM public.maintenance_entries) +

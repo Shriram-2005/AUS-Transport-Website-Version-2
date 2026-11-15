@@ -7,7 +7,7 @@ import { MaintenanceEntry } from './maintenance';
 import { ExpenseEntry, isTollExpense } from './expenses';
 import { Driver } from './drivers';
 import { Vehicle } from './vehicles';
-import { calculateBillTotal, parseDateToTimestamp, isDateInRange } from './profitAndLoss';
+import { calculateBillTotal, calculateBillGrossTotal, parseDateToTimestamp, isDateInRange } from './profitAndLoss';
 
 export interface FleetKpiSummary {
   totalRevenue: number;
@@ -91,7 +91,7 @@ export function calculateExecutiveKpis(
 
     if (bill.status === 'unpaid') {
       unpaidInvoicesCount += 1;
-      unpaidInvoicesAmount += bTotal;
+      unpaidInvoicesAmount += calculateBillGrossTotal(bill);
     }
 
     const visible = bill.visibleTrips ?? bill.trips?.length ?? 0;
@@ -277,7 +277,7 @@ export function getUnifiedRecentActivity(
 
   for (const b of bills) {
     const t = parseDateToTimestamp(b.date);
-    const amount = calculateBillTotal(b);
+    const amount = calculateBillGrossTotal(b);
     list.push({
       id: `inv-${b.billNumber}-${t}`,
       date: b.date,
