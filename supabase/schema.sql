@@ -661,6 +661,7 @@ LEFT JOIN (
 LEFT JOIN (
   SELECT vehicle_number, SUM(COALESCE(amount, 0)::numeric) AS total_expenses
   FROM public.expense_entries
+  WHERE UPPER(category) NOT LIKE '%TOLL%' AND UPPER(category) NOT LIKE '%FASTAG%'
   GROUP BY vehicle_number
 ) e ON UPPER(TRIM(e.vehicle_number)) = UPPER(TRIM(v.registration_number));
 
@@ -676,13 +677,13 @@ SELECT
   (SELECT COALESCE(SUM(total_amount), 0) FROM public.fuel_entries) AS total_fuel_cost,
   (SELECT COALESCE(SUM(liters), 0) FROM public.fuel_entries) AS total_fuel_liters,
   (SELECT COALESCE(SUM(amount), 0) FROM public.maintenance_entries) AS total_maintenance_cost,
-  (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries) AS total_expenses_cost,
+  (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries WHERE UPPER(category) NOT LIKE '%TOLL%' AND UPPER(category) NOT LIKE '%FASTAG%') AS total_expenses_cost,
   (
     (SELECT COALESCE(SUM(net_amount), 0) FROM public.invoices) -
     (
       (SELECT COALESCE(SUM(total_amount), 0) FROM public.fuel_entries) +
       (SELECT COALESCE(SUM(amount), 0) FROM public.maintenance_entries) +
-      (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries)
+      (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries WHERE UPPER(category) NOT LIKE '%TOLL%' AND UPPER(category) NOT LIKE '%FASTAG%')
     )
   ) AS net_operating_profit;
 

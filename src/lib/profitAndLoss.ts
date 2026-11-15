@@ -4,7 +4,7 @@
 import { BillData, parseMonthFromDate } from './invoices';
 import { FuelEntry } from './fuel';
 import { MaintenanceEntry } from './maintenance';
-import { ExpenseEntry } from './expenses';
+import { ExpenseEntry, isTollExpense } from './expenses';
 import { Driver } from './drivers';
 
 export interface MonthPnlRecord {
@@ -234,9 +234,10 @@ export function calculateVehiclePnl(
     m.maintenanceCost += cost;
   }
 
-  // 4. Process Expenses Entries
+  // 4. Process Expenses Entries (exclude FASTag & Toll expenses as they are reimbursed by clients)
   let totalExpenses = 0;
   for (const exp of expenses) {
+    if (isTollExpense(exp)) continue;
     const eVeh = (exp.vehicleNumber || '').trim().toUpperCase();
     if (cleanVehicle && eVeh !== cleanVehicle) continue;
     if (!isDateInRange(exp.date, fromDate, toDate)) continue;
@@ -322,8 +323,9 @@ export function calculateFleetPnl(
     totalExpenses += vPnl.expensesCost;
   }
 
-  // Add any non-vehicle GENERAL expenses
+  // Add any non-vehicle GENERAL expenses (excluding FASTag & Toll expenses)
   for (const exp of expenses) {
+    if (isTollExpense(exp)) continue;
     const eVeh = (exp.vehicleNumber || 'GENERAL').trim().toUpperCase();
     if (eVeh === 'GENERAL' || eVeh === 'OFFICE') {
       if (isDateInRange(exp.date, fromDate, toDate)) {

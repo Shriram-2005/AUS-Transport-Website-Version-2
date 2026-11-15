@@ -52,6 +52,17 @@ export const PAYMENT_MODES: ExpenseEntry['paymentMode'][] = [
 ];
 
 /**
+ * Checks whether an expense entry corresponds to FASTag or Highway Toll.
+ * Toll expenses are spent upfront and reimbursed by the client in freight bills,
+ * so they are excluded from operational expense deductions in Profit & Loss calculations.
+ */
+export function isTollExpense(entry: { category?: string; description?: string }): boolean {
+  const cat = (entry.category || '').toLowerCase();
+  const desc = (entry.description || '').toLowerCase();
+  return cat.includes('toll') || cat.includes('fastag') || desc.includes('toll') || desc.includes('fastag');
+}
+
+/**
  * Standard RFC-4122 UUID v4 generator for both client state and Supabase UUID columns
  */
 export function generateUUID(): string {
