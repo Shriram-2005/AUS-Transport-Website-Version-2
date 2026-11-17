@@ -1,7 +1,8 @@
 // Profit & Loss calculation engine across Freight Invoices, Fuel, Repairs, Driver Pay, and Expenses
 // Independent calculation with custom period filtering and monthly breakdowns
 
-import { BillData, parseMonthFromDate } from './invoices';
+import { BillData, parseMonthFromDate, calculateBillReceivable, calculateBillGrossTotal, getBillTdsRate } from './invoices';
+export { calculateBillReceivable, calculateBillGrossTotal, getBillTdsRate };
 import { FuelEntry } from './fuel';
 import { MaintenanceEntry } from './maintenance';
 import { ExpenseEntry, isTollExpense } from './expenses';
@@ -51,51 +52,18 @@ export interface FleetPnlSummary {
 
 /**
  * Calculates freight revenue for a bill for Profit & Loss and Overview analytics.
- * Toll amounts are excluded because toll is spent upfront and reimbursed by the client,
- * so it is a pass-through reimbursement rather than transport freight revenue.
+ * The Total Receivable Amount (Total Gross - TDS %, default 1%) is used as the true revenue
+ * figure across all transport analytics, reflecting actual payments received from the company.
  */
 export function calculateBillRevenue(bill: BillData): number {
-  let total = 0;
-  const visible = bill.visibleTrips ?? bill.trips?.length ?? 0;
-  for (const trip of (bill.trips || []).slice(0, visible)) {
-    if (trip.enabled !== false) {
-      const runningKm = Math.max(0, (Number(trip.closingKm) || 0) - (Number(trip.startingKm) || 0));
-      total += runningKm * (Number(trip.rate) || 0);
-      // NOTE: Toll amount is excluded from revenue as it is a reimbursed pass-through
-    }
-  }
-  if (bill.keralaRtoEnabled && (Number(bill.keralaRtoMultiplier) || 0) > 0) {
-    total += (Number(bill.keralaRtoMultiplier) || 0) * (Number(bill.keralaRtoAmount) || 0);
-  }
-  return Math.round(total);
+  return calculateBillReceivable(bill);
 }
 
 /**
- * Calculates gross total of the bill including toll (used for invoice receivables)
- */
-export function calculateBillGrossTotal(bill: BillData): number {
-  let total = 0;
-  const visible = bill.visibleTrips ?? bill.trips?.length ?? 0;
-  for (const trip of (bill.trips || []).slice(0, visible)) {
-    if (trip.enabled !== false) {
-      const runningKm = Math.max(0, (Number(trip.closingKm) || 0) - (Number(trip.startingKm) || 0));
-      total += runningKm * (Number(trip.rate) || 0);
-      if (trip.tollEnabled) {
-        total += Number(trip.tollAmount) || 0;
-      }
-    }
-  }
-  if (bill.keralaRtoEnabled && (Number(bill.keralaRtoMultiplier) || 0) > 0) {
-    total += (Number(bill.keralaRtoMultiplier) || 0) * (Number(bill.keralaRtoAmount) || 0);
-  }
-  return Math.round(total);
-}
-
-/**
- * Calculates final invoice freight amount for a bill in P&L (excludes toll reimbursement)
+ * Calculates final invoice revenue amount for a bill in P&L
  */
 export function calculateBillTotal(bill: BillData): number {
-  return calculateBillRevenue(bill);
+  return calculateBillReceivable(bill);
 }
 
 /**

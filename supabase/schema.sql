@@ -634,6 +634,9 @@ CREATE POLICY "Allow anon delete expense_entries"
 -- ==============================================================================
 -- 16. Profit & Loss Analytics Reporting View & Functions
 -- ==============================================================================
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS branch TEXT DEFAULT '';
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS tds_percentage NUMERIC DEFAULT 1.0;
+
 CREATE OR REPLACE VIEW public.vehicle_profit_and_loss_summary AS
 SELECT
   v.registration_number,
@@ -647,18 +650,9 @@ LEFT JOIN (
   SELECT
     vehicle_number,
     SUM(
-      COALESCE(net_amount, 0)::numeric - COALESCE((
-        SELECT SUM(
-          CASE
-            WHEN (t->>'tollEnabled') = 'true' AND (t->>'tollAmount') ~ '^-?[0-9]+(\.[0-9]+)?$'
-            THEN (t->>'tollAmount')::numeric
-            ELSE 0
-          END
-        )
-        FROM jsonb_array_elements(
-          CASE WHEN jsonb_typeof(trips) = 'array' THEN trips ELSE '[]'::jsonb END
-        ) AS t
-      ), 0)
+      ROUND(
+        COALESCE(net_amount, 0)::numeric * (1.0 - COALESCE(NULLIF(raw_data->>'tdsPercentage', '')::numeric, 1.0) / 100.0)
+      )
     ) AS total_freight
   FROM public.invoices
   GROUP BY vehicle_number
@@ -690,18 +684,9 @@ SELECT
   (SELECT COUNT(*) FROM public.invoices) AS total_invoices,
   (
     SELECT COALESCE(SUM(
-      COALESCE(net_amount, 0)::numeric - COALESCE((
-        SELECT SUM(
-          CASE
-            WHEN (t->>'tollEnabled') = 'true' AND (t->>'tollAmount') ~ '^-?[0-9]+(\.[0-9]+)?$'
-            THEN (t->>'tollAmount')::numeric
-            ELSE 0
-          END
-        )
-        FROM jsonb_array_elements(
-          CASE WHEN jsonb_typeof(trips) = 'array' THEN trips ELSE '[]'::jsonb END
-        ) AS t
-      ), 0)
+      ROUND(
+        COALESCE(net_amount, 0)::numeric * (1.0 - COALESCE(NULLIF(raw_data->>'tdsPercentage', '')::numeric, 1.0) / 100.0)
+      )
     ), 0)
     FROM public.invoices
   ) AS total_revenue,
@@ -712,18 +697,9 @@ SELECT
   (
     (
       SELECT COALESCE(SUM(
-        COALESCE(net_amount, 0)::numeric - COALESCE((
-          SELECT SUM(
-            CASE
-              WHEN (t->>'tollEnabled') = 'true' AND (t->>'tollAmount') ~ '^-?[0-9]+(\.[0-9]+)?$'
-              THEN (t->>'tollAmount')::numeric
-              ELSE 0
-            END
-          )
-          FROM jsonb_array_elements(
-            CASE WHEN jsonb_typeof(trips) = 'array' THEN trips ELSE '[]'::jsonb END
-          ) AS t
-        ), 0)
+        ROUND(
+          COALESCE(net_amount, 0)::numeric * (1.0 - COALESCE(NULLIF(raw_data->>'tdsPercentage', '')::numeric, 1.0) / 100.0)
+        )
       ), 0)
       FROM public.invoices
     ) -

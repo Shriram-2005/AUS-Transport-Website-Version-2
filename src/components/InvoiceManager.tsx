@@ -41,12 +41,22 @@ import {
   User,
   ArrowRightLeft,
   FilePlus,
+  Percent,
 } from 'lucide-react';
 import { CustomDatePicker } from './CustomDatePicker';
 import { getStoredVehicles, saveStoredVehicles, updateVehicleKmFromBill, VEHICLES_CHANGE_EVENT, Vehicle } from '@/lib/vehicles';
 import { getStoredDrivers, saveStoredDrivers, DRIVERS_CHANGE_EVENT, Driver } from '@/lib/drivers';
 import { initializeIndianPlaces, searchIndianPlaces, IndianPlace } from '@/lib/indianPlaces';
-import { getStoredInvoices, saveStoredInvoices, INVOICES_CHANGE_EVENT } from '@/lib/invoices';
+import {
+  getStoredInvoices,
+  saveStoredInvoices,
+  INVOICES_CHANGE_EVENT,
+  getStoredBranches,
+  saveStoredBranches,
+  BRANCHES_CHANGE_EVENT,
+  getBillTdsRate,
+  calculateBillReceivable,
+} from '@/lib/invoices';
 import {
   TRIGGER_MANUAL_SAVE_EVENT,
   REFRESH_MODULE_EVENT,
@@ -126,6 +136,8 @@ export interface BillData {
   billNumber: number | string;
   date: string;
   vehicleNumber: string;
+  branch?: string;
+  tdsPercentage?: number;
   consigneePreset?: string;
   consigneeName?: string;
   consigneeAddress?: string;
@@ -430,7 +442,17 @@ export function InvoiceManager() {
   const [vehicleFilter, setVehicleFilter] = useState('');
   const [driverFilter, setDriverFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<string>('bill_desc');
+
+  // Branch / Place state
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
+  const [activeBranchMenuId, setActiveBranchMenuId] = useState<string | number | null>(null);
+  const [newBranchInput, setNewBranchInput] = useState('');
+
+  // Manual TDS edit modal state
+  const [tdsModalBill, setTdsModalBill] = useState<BillData | null>(null);
+  const [tdsInput, setTdsInput] = useState('1');
 
   // Dropdown menus
   const [activeMenuId, setActiveMenuId] = useState<string | number | null>(null);
@@ -820,9 +842,22 @@ export function InvoiceManager() {
       if (!(e.target as HTMLElement).closest('.bill-card-menu') && !(e.target as HTMLElement).closest('.context-menu')) {
         setActiveMenuId(null);
       }
+      if (!(e.target as HTMLElement).closest('.branch-dropdown-container')) {
+        setActiveBranchMenuId(null);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Initialize and listen to branch/place changes
+  useEffect(() => {
+    setAvailableBranches(getStoredBranches());
+    const handleBranchesUpdate = (e: any) => {
+      setAvailableBranches(e.detail || getStoredBranches());
+    };
+    window.addEventListener(BRANCHES_CHANGE_EVENT as any, handleBranchesUpdate);
+    return () => window.removeEventListener(BRANCHES_CHANGE_EVENT as any, handleBranchesUpdate);
   }, []);
 
   const currentTotal = useMemo(() => calculateBillTotal(currentBill), [currentBill]);
@@ -887,6 +922,7 @@ export function InvoiceManager() {
             String(bill.billNumber).toLowerCase().includes(search) ||
             (bill.date && bill.date.toLowerCase().includes(search)) ||
             (bill.vehicleNumber && bill.vehicleNumber.toLowerCase().includes(search)) ||
+            (bill.branch && bill.branch.toLowerCase().includes(search)) ||
             (bill.consigneeName && bill.consigneeName.toLowerCase().includes(search)) ||
             (bill.consigneeAddress && bill.consigneeAddress.toLowerCase().includes(search)) ||
             (bill.consigneeGst && bill.consigneeGst.toLowerCase().includes(search)) ||
@@ -940,6 +976,15 @@ export function InvoiceManager() {
           }
         }
 
+        // Branch / Place filter
+        if (branchFilter) {
+          if (branchFilter === '__unassigned__') {
+            if (bill.branch && bill.branch.trim() !== '') return false;
+          } else {
+            if ((bill.branch || '').toLowerCase() !== branchFilter.toLowerCase()) return false;
+          }
+        }
+
         return true;
       })
       .sort((a, b) => {
@@ -974,6 +1019,7 @@ export function InvoiceManager() {
     vehicleFilter,
     driverFilter,
     monthFilter,
+    branchFilter,
     sortOrder,
     calculateBillTotal,
   ]);
@@ -987,7 +1033,7 @@ export function InvoiceManager() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, lockFilter, vehicleFilter, driverFilter, monthFilter, sortOrder]);
+  }, [searchTerm, statusFilter, lockFilter, vehicleFilter, driverFilter, monthFilter, branchFilter, sortOrder]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBills.length / ITEMS_PER_PAGE));
   const paginatedBills = useMemo(() => {
@@ -995,20 +1041,22 @@ export function InvoiceManager() {
     return filteredBills.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredBills, currentPage]);
 
-  // Stats calculation
+  // Stats calculation using Total Receivable Amount (after TDS deduction)
   const stats = useMemo(() => {
     const totalBills = bills.length;
     let received = 0;
     let pending = 0;
+    let totalReceivable = 0;
 
     bills.forEach((b) => {
-      const amt = calculateBillTotal(b);
-      if (b.status === 'paid') received += amt;
-      else pending += amt;
+      const recAmt = calculateBillReceivable(b);
+      totalReceivable += recAmt;
+      if (b.status === 'paid') received += recAmt;
+      else pending += recAmt;
     });
 
-    return { totalBills, received, pending };
-  }, [bills, calculateBillTotal]);
+    return { totalBills, received, pending, totalReceivable };
+  }, [bills]);
 
   // Distinct vehicles for dropdown
   const vehicleOptions = useMemo(() => {
@@ -1170,6 +1218,99 @@ export function InvoiceManager() {
 
     openEditor(duplicated);
     setActiveMenuId(null);
+  };
+
+  const handleAssignBranch = async (billNumber: string | number, branchName: string) => {
+    const updatedBills = bills.map((b) => {
+      if (String(b.billNumber) === String(billNumber)) {
+        return { ...b, branch: branchName, updatedAt: new Date().toISOString() };
+      }
+      return b;
+    });
+    setBills(updatedBills);
+    saveStoredInvoices(updatedBills);
+    setActiveBranchMenuId(null);
+
+    const target = updatedBills.find((b) => String(b.billNumber) === String(billNumber));
+    if (target) {
+      if (String(currentBill.billNumber) === String(target.billNumber)) setCurrentBill(target);
+      try {
+        const supabase = createClient();
+        await supabase
+          .from('invoices')
+          .update({
+            raw_data: {
+              ...target,
+              branch: branchName,
+              updatedAt: target.updatedAt,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('bill_number', String(target.billNumber));
+      } catch (err) {
+        console.error('Error updating branch in Supabase:', err);
+      }
+    }
+  };
+
+  const handleAddBranch = (currentBillNumber?: string | number) => {
+    const trimmed = newBranchInput.trim();
+    if (!trimmed) return;
+    if (!availableBranches.some((b) => b.toLowerCase() === trimmed.toLowerCase())) {
+      const nextBranches = [...availableBranches, trimmed];
+      setAvailableBranches(nextBranches);
+      saveStoredBranches(nextBranches);
+    }
+    if (currentBillNumber) {
+      handleAssignBranch(currentBillNumber, trimmed);
+    }
+    setNewBranchInput('');
+  };
+
+  const handleDeleteBranch = (branchToDelete: string) => {
+    const nextBranches = availableBranches.filter((b) => b !== branchToDelete);
+    setAvailableBranches(nextBranches);
+    saveStoredBranches(nextBranches);
+    if (branchFilter === branchToDelete) {
+      setBranchFilter('');
+    }
+  };
+
+  const handleSaveTds = async () => {
+    if (!tdsModalBill) return;
+    const rate = parseFloat(tdsInput);
+    const validRate = isNaN(rate) || rate < 0 ? 1 : Math.round(rate * 100) / 100;
+
+    const updatedBills = bills.map((b) => {
+      if (String(b.billNumber) === String(tdsModalBill.billNumber)) {
+        return { ...b, tdsPercentage: validRate, updatedAt: new Date().toISOString() };
+      }
+      return b;
+    });
+    setBills(updatedBills);
+    saveStoredInvoices(updatedBills);
+
+    const target = updatedBills.find((b) => String(b.billNumber) === String(tdsModalBill.billNumber));
+    if (target) {
+      if (String(currentBill.billNumber) === String(target.billNumber)) setCurrentBill(target);
+      try {
+        const supabase = createClient();
+        await supabase
+          .from('invoices')
+          .update({
+            raw_data: {
+              ...target,
+              tdsPercentage: validRate,
+              updatedAt: target.updatedAt,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('bill_number', String(target.billNumber));
+      } catch (err) {
+        console.error('Error updating TDS in Supabase:', err);
+      }
+    }
+    setTdsModalBill(null);
   };
 
   const handleCreateNewBill = () => {
@@ -2929,12 +3070,33 @@ export function InvoiceManager() {
                   onChange={(e) => setVehicleFilter(e.target.value)}
                   className="appearance-none pl-3 pr-8 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 text-xs font-medium shadow-xs hover:border-gray-400 dark:hover:border-zinc-600 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 cursor-pointer"
                 >
-                  <option value="">All Vehicles ({bills.length})</option>
+                  <option value="">All Vehicles</option>
                   {vehicleOptions.map((v) => (
                     <option key={v} value={v}>
                       {v}
                     </option>
                   ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-zinc-500" />
+              </div>
+
+              {/* 2. Branch / Place Filter */}
+              <div className="relative">
+                <select
+                  value={branchFilter}
+                  onChange={(e) => {
+                    setBranchFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="appearance-none pl-3 pr-8 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 text-xs font-medium shadow-xs hover:border-gray-400 dark:hover:border-zinc-600 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="">All Places</option>
+                  {availableBranches.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                  <option value="__unassigned__">No Place Assigned</option>
                 </select>
                 <ChevronDown className="w-3.5 h-3.5 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-zinc-500" />
               </div>
@@ -3060,6 +3222,8 @@ export function InvoiceManager() {
             <div className="bills-grid">
               {paginatedBills.map((bill) => {
                 const totalAmount = calculateBillTotal(bill);
+                const tdsRate = getBillTdsRate(bill);
+                const receivableAmount = calculateBillReceivable(bill);
                 const paymentStatus = bill.status === 'paid' ? 'Received' : 'Not Received';
                 const statusClass = bill.status === 'paid' ? 'status-paid' : 'status-unpaid';
                 const updatedDateStr = bill.updatedAt
@@ -3083,94 +3247,214 @@ export function InvoiceManager() {
                         <div className="text-sm text-gray-500 dark:text-zinc-400 mt-2">{bill.vehicleNumber}</div>
                       </div>
 
-                      {/* 3-dots Menu Button */}
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveMenuId(activeMenuId === bill.billNumber ? null : bill.billNumber);
-                          }}
-                          className="bill-card-menu"
-                        >
-                          ⋮
-                        </button>
+                      {/* Header Actions: Branch Dropdown (to the left of 3-dot menu) + 3-dot Menu */}
+                      <div className="flex items-center gap-1.5 self-start">
+                        {/* Branch / Place Dropdown Selector */}
+                        <div className="relative branch-dropdown-container">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveBranchMenuId(activeBranchMenuId === bill.billNumber ? null : bill.billNumber);
+                              setActiveMenuId(null);
+                            }}
+                            title={bill.branch ? `Assigned Place: ${bill.branch}` : 'Assign Branch / Place'}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                              bill.branch
+                                ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
+                                : 'bg-gray-50 hover:bg-gray-100 dark:bg-zinc-800/60 dark:hover:bg-zinc-800 text-gray-600 dark:text-zinc-400 border-gray-200 dark:border-zinc-700'
+                            }`}
+                          >
+                            <MapPin className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" />
+                            <span className="truncate max-w-[85px]">{bill.branch || '+ Place'}</span>
+                            <ChevronDown className="w-3 h-3 opacity-60 shrink-0" />
+                          </button>
 
-                        {/* EXACT CONTEXT MENU DROPDOWN (Reference dashboard.css / js) */}
-                        {activeMenuId === bill.billNumber && (
-                          <div className="context-menu">
-                            <button
-                              type="button"
-                              disabled={bill.locked}
-                              onClick={() => {
-                                if (bill.locked) return;
-                                openEditor(bill);
-                                setActiveMenuId(null);
-                              }}
-                              title={bill.locked ? 'This bill is locked because it is received' : 'Edit Bill'}
-                              className={`context-menu-item ${bill.locked ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-zinc-500' : ''}`}
-                              style={bill.locked ? { cursor: 'not-allowed', pointerEvents: 'auto' } : undefined}
+                          {/* Branch Dropdown Menu */}
+                          {activeBranchMenuId === bill.billNumber && (
+                            <div
+                              className="absolute right-0 top-full mt-1.5 w-60 rounded-xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-xl z-50 p-2 text-xs"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              <Pencil className="w-3.5 h-3.5" />
-                              <span>{bill.locked ? 'Edit (Locked)' : 'Edit'}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                openEditor(bill);
-                                setActiveMenuId(null);
-                              }}
-                              className="context-menu-item"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>View</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveMenuId(null);
-                                handlePrint(bill);
-                              }}
-                              className="context-menu-item"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                              <span>Print</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDuplicateBill(bill)}
-                              className="context-menu-item"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                              <span>Duplicate</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleTogglePaymentStatus(bill.billNumber)}
-                              className="context-menu-item"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
-                              <span>{bill.status === 'paid' ? 'Mark as Not Received' : 'Mark as Received'}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleLock(bill.billNumber)}
-                              className="context-menu-item"
-                            >
-                              {bill.locked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                              <span>{bill.locked ? 'Unlock Bill' : 'Lock Bill'}</span>
-                            </button>
-                            <div className="border-t border-gray-200 dark:border-white/10 my-1"></div>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteBill(bill.billNumber)}
-                              className="context-menu-item text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        )}
+                              <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-gray-100 dark:border-zinc-800">
+                                <span className="font-bold text-gray-700 dark:text-zinc-300">Assign Place / Branch</span>
+                                {bill.branch && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAssignBranch(bill.billNumber, '')}
+                                    className="text-[11px] text-red-500 hover:underline cursor-pointer"
+                                  >
+                                    Clear
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Available places list */}
+                              <div className="max-h-44 overflow-y-auto space-y-1">
+                                {availableBranches.map((branch) => {
+                                  const isSelected = (bill.branch || '').toLowerCase() === branch.toLowerCase();
+                                  return (
+                                    <div
+                                      key={branch}
+                                      className={`group flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                                        isSelected
+                                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-bold'
+                                          : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-800 dark:text-zinc-200'
+                                      }`}
+                                      onClick={() => handleAssignBranch(bill.billNumber, branch)}
+                                    >
+                                      <div className="flex items-center gap-1.5 truncate">
+                                        <MapPin className={`w-3 h-3 ${isSelected ? 'text-blue-600' : 'text-gray-400'}`} />
+                                        <span className="truncate">{branch}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteBranch(branch);
+                                          }}
+                                          title={`Delete "${branch}"`}
+                                          className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-red-600 rounded transition-opacity cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Add New Place Form */}
+                              <div className="pt-2 mt-2 border-t border-gray-100 dark:border-zinc-800 flex gap-1.5">
+                                <input
+                                  type="text"
+                                  placeholder="New place name..."
+                                  value={newBranchInput}
+                                  onChange={(e) => setNewBranchInput(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleAddBranch(bill.billNumber);
+                                    }
+                                  }}
+                                  className="flex-1 px-2 py-1 rounded-md border border-gray-300 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-xs text-gray-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddBranch(bill.billNumber)}
+                                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-semibold text-xs cursor-pointer shrink-0"
+                                >
+                                  Add
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 3-dots Menu Button */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMenuId(activeMenuId === bill.billNumber ? null : bill.billNumber);
+                              setActiveBranchMenuId(null);
+                            }}
+                            className="bill-card-menu"
+                          >
+                            ⋮
+                          </button>
+
+                          {/* EXACT CONTEXT MENU DROPDOWN (Reference dashboard.css / js) */}
+                          {activeMenuId === bill.billNumber && (
+                            <div className="context-menu">
+                              <button
+                                type="button"
+                                disabled={bill.locked}
+                                onClick={() => {
+                                  if (bill.locked) return;
+                                  openEditor(bill);
+                                  setActiveMenuId(null);
+                                }}
+                                title={bill.locked ? 'This bill is locked because it is received' : 'Edit Bill'}
+                                className={`context-menu-item ${bill.locked ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-zinc-500' : ''}`}
+                                style={bill.locked ? { cursor: 'not-allowed', pointerEvents: 'auto' } : undefined}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span>{bill.locked ? 'Edit (Locked)' : 'Edit'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  openEditor(bill);
+                                  setActiveMenuId(null);
+                                }}
+                                className="context-menu-item"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>View</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  handlePrint(bill);
+                                }}
+                                className="context-menu-item"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                <span>Print</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicateBill(bill)}
+                                className="context-menu-item"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Duplicate</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePaymentStatus(bill.billNumber)}
+                                className="context-menu-item"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                                <span>{bill.status === 'paid' ? 'Mark as Not Received' : 'Mark as Received'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleLock(bill.billNumber)}
+                                className="context-menu-item"
+                              >
+                                {bill.locked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                                <span>{bill.locked ? 'Unlock Bill' : 'Lock Bill'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  setTdsModalBill(bill);
+                                  setTdsInput(String(bill.tdsPercentage !== undefined && bill.tdsPercentage !== null ? bill.tdsPercentage : 1));
+                                }}
+                                className="context-menu-item text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                              >
+                                <Percent className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                                <span>Edit TDS ({bill.tdsPercentage !== undefined && bill.tdsPercentage !== null ? bill.tdsPercentage : 1}%)</span>
+                              </button>
+                              <div className="border-t border-gray-200 dark:border-white/10 my-1"></div>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteBill(bill.billNumber)}
+                                className="context-menu-item text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -3187,6 +3471,14 @@ export function InvoiceManager() {
                         <span className="bill-card-meta-label">Total Amount</span>
                         <span className="bill-card-meta-value text-green-600 dark:text-emerald-400 font-bold">
                           ₹ {totalAmount.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div className="bill-card-meta-row">
+                        <span className="bill-card-meta-label" title={`Deducted TDS: ${tdsRate}% (cut by company)`}>
+                          Total Receivable Amount
+                        </span>
+                        <span className="bill-card-meta-value text-blue-600 dark:text-blue-400 font-bold font-mono">
+                          ₹ {receivableAmount.toLocaleString('en-IN')}
                         </span>
                       </div>
                       <div className="bill-card-meta-row">
@@ -5692,6 +5984,106 @@ export function InvoiceManager() {
                 className="px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-700 text-white active:scale-95 transition-all shadow-sm cursor-pointer"
               >
                 Yes, Delete Trip {tripToDelete}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT TDS PERCENTAGE MODAL */}
+      {tdsModalBill !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                <Percent className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  Edit TDS Deduction Rate
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-zinc-400">
+                  Invoice #{tdsModalBill.billNumber} ({tdsModalBill.vehicleNumber})
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-zinc-300 mb-1.5">
+                  TDS Deduction Percentage (%)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={tdsInput}
+                    onChange={(e) => setTdsInput(e.target.value)}
+                    placeholder="1"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 font-mono text-sm focus:outline-none focus:border-blue-600"
+                    autoFocus
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">
+                    %
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-zinc-400 mt-1.5">
+                  Standard transport TDS is 1%. Company automatically cuts this from the gross bill.
+                </p>
+              </div>
+
+              {/* Financial Calculation Preview */}
+              {(() => {
+                const gross = calculateBillTotal(tdsModalBill);
+                const rate = parseFloat(tdsInput);
+                const validRate = isNaN(rate) || rate < 0 ? 0 : rate;
+                const tdsCut = Math.round(gross * (validRate / 100));
+                const receivable = gross - tdsCut;
+                return (
+                  <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-gray-200 dark:border-zinc-800 space-y-2 text-xs">
+                    <div className="flex justify-between text-gray-600 dark:text-zinc-400">
+                      <span>Total Invoice Amount:</span>
+                      <span className="font-mono font-bold text-gray-900 dark:text-zinc-100">
+                        ₹ {gross.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-rose-600 dark:text-rose-400">
+                      <span>TDS Cut ({validRate}%):</span>
+                      <span className="font-mono font-bold">
+                        - ₹ {tdsCut.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="border-t border-gray-200 dark:border-zinc-700 pt-2 flex justify-between font-bold text-blue-600 dark:text-blue-400">
+                      <span>Total Receivable Amount:</span>
+                      <span className="font-mono">
+                        ₹ {receivable.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-300">
+                Note: This TDS percentage applies only to the dashboard cards and revenue analytics. It will not modify your printed invoice bill document.
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setTdsModalBill(null)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveTds}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white active:scale-95 transition-all shadow-sm cursor-pointer"
+              >
+                Save TDS Rate
               </button>
             </div>
           </div>

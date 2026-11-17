@@ -24,6 +24,8 @@ export interface BillData {
   billNumber: number | string;
   date: string;
   vehicleNumber: string;
+  branch?: string;                 // Branch / Place (e.g. 'Nilakottai')
+  tdsPercentage?: number;          // Manual TDS deduction rate % (default 1)
   consigneePreset?: string;
   consigneeName?: string;
   consigneeAddress?: string;
@@ -54,7 +56,87 @@ export interface VehicleMonthlyStat {
 export const INVOICES_STORAGE_KEY = 'aus_transport_invoices_v1';
 export const INVOICES_CHANGE_EVENT = 'aus_invoices_changed';
 
+export const BRANCHES_STORAGE_KEY = 'aus_transport_invoice_branches_v1';
+export const BRANCHES_CHANGE_EVENT = 'aus_branches_changed';
+export const DEFAULT_BRANCHES: string[] = ['Nilakottai'];
+
 export const INITIAL_BILLS: BillData[] = [];
+
+/**
+ * Returns saved branch / place names from localStorage (defaults to ['Nilakottai'])
+ */
+export function getStoredBranches(): string[] {
+  if (typeof window === 'undefined') return [...DEFAULT_BRANCHES];
+  try {
+    const raw = localStorage.getItem(BRANCHES_STORAGE_KEY);
+    if (!raw) return [...DEFAULT_BRANCHES];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed.filter((p) => typeof p === 'string' && p.trim() !== '');
+    }
+  } catch (err) {
+    console.error('Error reading branches from localStorage:', err);
+  }
+  return [...DEFAULT_BRANCHES];
+}
+
+/**
+ * Saves branch / place names to localStorage and dispatches a live change event
+ */
+export function saveStoredBranches(branches: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const unique = Array.from(new Set(branches.map((b) => b.trim()).filter(Boolean)));
+    localStorage.setItem(BRANCHES_STORAGE_KEY, JSON.stringify(unique));
+    window.dispatchEvent(new CustomEvent(BRANCHES_CHANGE_EVENT, { detail: unique }));
+  } catch (err) {
+    console.error('Error saving branches to localStorage:', err);
+  }
+}
+
+/**
+ * Returns the TDS deduction rate % for a bill (defaults to 1%)
+ */
+export function getBillTdsRate(bill?: BillData | null): number {
+  if (!bill) return 1;
+  if (bill.tdsPercentage !== undefined && bill.tdsPercentage !== null && !isNaN(Number(bill.tdsPercentage))) {
+    return Number(bill.tdsPercentage);
+  }
+  return 1;
+}
+
+/**
+ * Calculates gross total of an invoice bill (runningKm * rate + toll + Kerala RTO)
+ */
+export function calculateBillGrossTotal(bill: BillData): number {
+  let total = 0;
+  const visible = bill.visibleTrips ?? bill.trips?.length ?? 0;
+  for (const trip of (bill.trips || []).slice(0, visible)) {
+    if (trip.enabled !== false) {
+      const runningKm = Math.max(0, (Number(trip.closingKm) || 0) - (Number(trip.startingKm) || 0));
+      total += runningKm * (Number(trip.rate) || 0);
+      if (trip.tollEnabled) {
+        total += Number(trip.tollAmount) || 0;
+      }
+    }
+  }
+  if (bill.keralaRtoEnabled && (Number(bill.keralaRtoMultiplier) || 0) > 0) {
+    total += (Number(bill.keralaRtoMultiplier) || 0) * (Number(bill.keralaRtoAmount) || 0);
+  }
+  return Math.round(total);
+}
+
+/**
+ * Calculates Total Receivable Amount = (Total Gross Amount - TDS %)
+ * Standard TDS rate is 1% unless overridden for that specific bill.
+ * This receivable amount is used as the true revenue figure across all reports and dashboards.
+ */
+export function calculateBillReceivable(bill: BillData): number {
+  const gross = calculateBillGrossTotal(bill);
+  const tdsRate = getBillTdsRate(bill);
+  const receivable = gross * (1 - tdsRate / 100);
+  return Math.round(receivable);
+}
 
 
 const MONTH_NAMES = [

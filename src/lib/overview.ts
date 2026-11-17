@@ -91,7 +91,7 @@ export function calculateExecutiveKpis(
 
     if (bill.status === 'unpaid') {
       unpaidInvoicesCount += 1;
-      unpaidInvoicesAmount += calculateBillGrossTotal(bill);
+      unpaidInvoicesAmount += calculateBillTotal(bill);
     }
 
     const visible = bill.visibleTrips ?? bill.trips?.length ?? 0;
