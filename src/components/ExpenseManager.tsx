@@ -739,6 +739,34 @@ export function ExpenseManager() {
     }, 400);
   };
 
+  // Fleet Expenses KPIs
+  const expenseKpis = useMemo(() => {
+    let totalAmount = 0;
+    let tollAmount = 0;
+    let operatingAmount = 0;
+
+    expenses.forEach((e) => {
+      const amt = Number(e.amount) || 0;
+      totalAmount += amt;
+      const cat = (e.category || '').toLowerCase();
+      if (cat.includes('toll')) {
+        tollAmount += amt;
+      } else {
+        operatingAmount += amt;
+      }
+    });
+
+    const uniqueCategories = new Set(expenses.map((e) => e.category).filter(Boolean)).size;
+
+    return {
+      totalAmount,
+      tollAmount,
+      operatingAmount,
+      totalEntries: expenses.length,
+      categoryCount: uniqueCategories,
+    };
+  }, [expenses]);
+
   return (
     <div className="space-y-6">
       {/* Top Header: Matching Vehicle, Driver, Fuel, and Maintenance Managers */}
@@ -812,6 +840,77 @@ export function ExpenseManager() {
             <Plus className="w-4 h-4" />
             <span>Add Expense</span>
           </button>
+        </div>
+      </div>
+
+      {/* KPI Stats Overview */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Total Fleet Expenses</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <Wallet className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              Rs.{Math.round(expenseKpis.totalAmount).toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Across {expenseKpis.totalEntries} logged vouchers
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Operating Expenses</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <CreditCard className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              Rs.{Math.round(expenseKpis.operatingAmount).toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Taxes, insurance, batas & yard (Excl. Toll)
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Toll Expenses</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
+              <Receipt className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              Rs.{Math.round(expenseKpis.tollAmount).toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Reimbursed tolls (Excluded from P&L)
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Expense Vouchers</span>
+            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900 flex items-center justify-center text-purple-600 dark:text-purple-400">
+              <Building2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {expenseKpis.totalEntries} {expenseKpis.totalEntries === 1 ? 'Voucher' : 'Vouchers'}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Across {expenseKpis.categoryCount} active categories
+            </p>
+          </div>
         </div>
       </div>
 

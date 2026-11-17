@@ -252,6 +252,31 @@ export function VehicleManager() {
     setCardOrderVersion((v) => v + 1);
   };
 
+  // Vehicle Fleet KPIs
+  const vehicleKpis = useMemo(() => {
+    const totalVehicles = vehicles.length;
+    let totalFleetKm = 0;
+    let totalTrips = 0;
+    bills.forEach((b) => {
+      const visibleTrips = b.visibleTrips ?? b.trips?.length ?? 0;
+      const trips = (b.trips || []).slice(0, visibleTrips);
+      trips.forEach((t) => {
+        if (t.enabled !== false) {
+          const closing = Number(t.closingKm) || 0;
+          const starting = Number(t.startingKm) || 0;
+          const runningKm = Math.max(0, closing - starting);
+          if (runningKm > 0) {
+            totalFleetKm += runningKm;
+            totalTrips += 1;
+          }
+        }
+      });
+    });
+    const avgKmPerVehicle = totalVehicles > 0 ? Math.round(totalFleetKm / totalVehicles) : 0;
+    const totalOdometer = vehicles.reduce((sum, v) => sum + (Number(v.currentKm) || 0), 0);
+    return { totalVehicles, totalFleetKm, totalTrips, avgKmPerVehicle, totalOdometer };
+  }, [vehicles, bills]);
+
   // Filtered vehicles by search query and user-defined card order
   const filteredVehicles = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -452,6 +477,77 @@ export function VehicleManager() {
             <Plus className="w-4 h-4" />
             <span>Add Vehicle</span>
           </button>
+        </div>
+      </div>
+
+      {/* KPI Stats Overview */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Total Fleet</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <Truck className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {vehicleKpis.totalVehicles} {vehicleKpis.totalVehicles === 1 ? 'Vehicle' : 'Vehicles'}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Active registered fleet units
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Running Distance</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <Gauge className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {vehicleKpis.totalFleetKm.toLocaleString('en-IN')} KM
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Total trip distance logged
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Completed Trips</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <Calendar className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {vehicleKpis.totalTrips.toLocaleString('en-IN')} {vehicleKpis.totalTrips === 1 ? 'Trip' : 'Trips'}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Across all fleet vehicles
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Avg KM / Vehicle</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
+              <RotateCcw className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {vehicleKpis.avgKmPerVehicle.toLocaleString('en-IN')} KM
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Combined: {vehicleKpis.totalOdometer.toLocaleString('en-IN')} KM
+            </p>
+          </div>
         </div>
       </div>
 

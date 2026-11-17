@@ -798,6 +798,21 @@ export function FuelManager() {
     }, 400);
   };
 
+  // Fleet Fuel KPIs
+  const fuelKpis = useMemo(() => {
+    const summary = calculateFuelSummary(fuelEntries);
+    const uniqueVehiclesFueled = new Set(fuelEntries.map((e) => e.vehicleNumber).filter(Boolean)).size;
+    const bunkCount = bunkList.length;
+    return {
+      totalAmount: summary.totalAmount,
+      totalLiters: summary.totalLiters,
+      averageRate: summary.averageRate,
+      entryCount: summary.entryCount,
+      uniqueVehiclesFueled,
+      bunkCount,
+    };
+  }, [fuelEntries, bunkList]);
+
   return (
     <div className="space-y-6">
       {/* Top Header: Matching VehicleManager & DriverManager with clear prominent font sizing */}
@@ -871,6 +886,77 @@ export function FuelManager() {
             <Plus className="w-4 h-4" />
             <span>Add Fuel Entry</span>
           </button>
+        </div>
+      </div>
+
+      {/* KPI Stats Overview */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Total Fuel Expense</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
+              <Fuel className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              Rs.{Math.round(fuelKpis.totalAmount).toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Across {fuelKpis.entryCount} logged fuel receipts
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Fuel Dispensed</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <Droplets className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {fuelKpis.totalLiters.toFixed(2)} L
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Supplied to {fuelKpis.uniqueVehiclesFueled} fleet vehicles
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Avg Fuel Rate</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <Truck className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              Rs.{fuelKpis.averageRate.toFixed(2)} / L
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Weighted fleet average rate
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Partner Bunks</span>
+            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900 flex items-center justify-center text-purple-600 dark:text-purple-400">
+              <Building2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {fuelKpis.bunkCount} {fuelKpis.bunkCount === 1 ? 'Bunk' : 'Bunks'}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              {fuelKpis.entryCount} total logged receipts
+            </p>
+          </div>
         </div>
       </div>
 

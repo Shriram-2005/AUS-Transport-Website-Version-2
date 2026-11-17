@@ -45,6 +45,9 @@ import {
   Calendar,
   ArrowUpDown,
   CreditCard,
+  Receipt,
+  Clock,
+  TrendingUp,
 } from 'lucide-react';
 import { CustomDatePicker } from './CustomDatePicker';
 import { getStoredVehicles, saveStoredVehicles, updateVehicleKmFromBill, VEHICLES_CHANGE_EVENT, Vehicle } from '@/lib/vehicles';
@@ -59,6 +62,7 @@ import {
   BRANCHES_CHANGE_EVENT,
   getBillTdsRate,
   calculateBillReceivable,
+  calculateBillGrossTotal,
 } from '@/lib/invoices';
 import {
   TRIGGER_MANUAL_SAVE_EVENT,
@@ -1054,15 +1058,38 @@ export function InvoiceManager() {
     let received = 0;
     let pending = 0;
     let totalReceivable = 0;
+    let totalGross = 0;
+    let paidCount = 0;
+    let pendingCount = 0;
+    let totalTrips = 0;
+    let totalKm = 0;
 
     bills.forEach((b) => {
+      const grossAmt = calculateBillGrossTotal(b);
+      totalGross += grossAmt;
       const recAmt = calculateBillReceivable(b);
       totalReceivable += recAmt;
-      if (b.status === 'paid') received += recAmt;
-      else pending += recAmt;
+      if (b.status === 'paid') {
+        received += recAmt;
+        paidCount++;
+      } else {
+        pending += recAmt;
+        pendingCount++;
+      }
+      const visibleTrips = b.visibleTrips ?? b.trips?.length ?? 0;
+      const trips = (b.trips || []).slice(0, visibleTrips);
+      trips.forEach((t) => {
+        if (t.enabled !== false) {
+          totalTrips++;
+          const closing = Number(t.closingKm) || 0;
+          const starting = Number(t.startingKm) || 0;
+          const km = Math.max(0, closing - starting);
+          totalKm += km;
+        }
+      });
     });
 
-    return { totalBills, received, pending, totalReceivable };
+    return { totalBills, received, pending, totalReceivable, totalGross, paidCount, pendingCount, totalTrips, totalKm };
   }, [bills]);
 
   // Distinct vehicles for dropdown
@@ -2974,39 +3001,113 @@ export function InvoiceManager() {
           </div>
 
           {/* STATS SUMMARY CARDS */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 shadow-xs">
-              <span className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider block">
-                Total Bills
-              </span>
-              <span className="text-xl font-black text-gray-900 dark:text-white mt-1 block">
-                {bills.length}
-              </span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {/* 1. Net Receivable (Revenue) */}
+            <div className="p-3.5 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20 shadow-xs space-y-1.5 hover:border-blue-300 dark:hover:border-blue-800 transition-all">
+              <div className="flex items-center justify-between text-blue-700 dark:text-blue-300">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Net Receivable</span>
+                <div className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-900/60 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                  <Receipt className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div>
+                <span className="text-lg font-black font-mono text-blue-900 dark:text-blue-100 block tracking-tight">
+                  ₹ {Math.round(stats.totalReceivable).toLocaleString('en-IN')}
+                </span>
+                <span className="text-[10px] font-medium text-blue-600/80 dark:text-blue-400/80 block mt-0.5">
+                  After TDS cut (Revenue)
+                </span>
+              </div>
             </div>
-            <div className="p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-950/60 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-xs">
-              <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">
-                Received (Paid)
-              </span>
-              <span className="text-xl font-black text-emerald-700 dark:text-emerald-400 mt-1 block">
-                ₹ {stats.received.toLocaleString('en-IN')}
-              </span>
+
+            {/* 2. Total Gross Invoiced */}
+            <div className="p-3.5 rounded-2xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/40 dark:bg-purple-950/20 shadow-xs space-y-1.5 hover:border-purple-300 dark:hover:border-purple-800 transition-all">
+              <div className="flex items-center justify-between text-purple-700 dark:text-purple-300">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Gross Invoiced</span>
+                <div className="w-6 h-6 rounded-lg bg-purple-100 dark:bg-purple-900/60 flex items-center justify-center text-purple-600 dark:text-purple-400">
+                  <FileText className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div>
+                <span className="text-lg font-black font-mono text-purple-900 dark:text-purple-100 block tracking-tight">
+                  ₹ {Math.round(stats.totalGross).toLocaleString('en-IN')}
+                </span>
+                <span className="text-[10px] font-medium text-purple-600/80 dark:text-purple-400/80 block mt-0.5">
+                  Pre-tax billing total
+                </span>
+              </div>
             </div>
-            <div className="p-3.5 rounded-xl border border-amber-200 dark:border-amber-950/60 bg-amber-50/40 dark:bg-amber-950/20 shadow-xs">
-              <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider block">
-                Pending (Unpaid)
-              </span>
-              <span className="text-xl font-black text-amber-700 dark:text-amber-400 mt-1 block">
-                ₹ {stats.pending.toLocaleString('en-IN')}
-              </span>
+
+            {/* 3. Received (Paid) */}
+            <div className="p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-950/60 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-xs space-y-1.5 hover:border-emerald-300 dark:hover:border-emerald-800 transition-all">
+              <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Received (Paid)</span>
+                <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div>
+                <span className="text-lg font-black font-mono text-emerald-800 dark:text-emerald-200 block tracking-tight">
+                  ₹ {Math.round(stats.received).toLocaleString('en-IN')}
+                </span>
+                <span className="text-[10px] font-medium text-emerald-600/80 dark:text-emerald-400/80 block mt-0.5">
+                  {stats.paidCount} of {stats.totalBills} bills cleared
+                </span>
+              </div>
             </div>
-            <div className="p-3.5 rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 shadow-xs">
-              <span className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider block">
-                Filter Results
-              </span>
-              <span className="text-xl font-black text-gray-900 dark:text-white mt-1 block">
-                {filteredBills.length}{' '}
-                <span className="text-xs font-normal text-gray-500 dark:text-zinc-400">of {bills.length} bills</span>
-              </span>
+
+            {/* 4. Pending (Unpaid) */}
+            <div className="p-3.5 rounded-2xl border border-amber-200 dark:border-amber-950/60 bg-amber-50/40 dark:bg-amber-950/20 shadow-xs space-y-1.5 hover:border-amber-300 dark:hover:border-amber-800 transition-all">
+              <div className="flex items-center justify-between text-amber-700 dark:text-amber-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Pending (Unpaid)</span>
+                <div className="w-6 h-6 rounded-lg bg-amber-100 dark:bg-amber-900/60 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                  <Clock className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div>
+                <span className="text-lg font-black font-mono text-amber-800 dark:text-amber-200 block tracking-tight">
+                  ₹ {Math.round(stats.pending).toLocaleString('en-IN')}
+                </span>
+                <span className="text-[10px] font-medium text-amber-600/80 dark:text-amber-400/80 block mt-0.5">
+                  {stats.pendingCount} bills outstanding
+                </span>
+              </div>
+            </div>
+
+            {/* 5. Total Invoiced Bills */}
+            <div className="p-3.5 rounded-2xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 shadow-xs space-y-1.5 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+              <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Total Bills</span>
+                <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-zinc-800 flex items-center justify-center text-gray-600 dark:text-zinc-300">
+                  <Percent className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div>
+                <span className="text-lg font-black font-mono text-gray-900 dark:text-white block tracking-tight">
+                  {bills.length}
+                </span>
+                <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-400 block mt-0.5">
+                  {filteredBills.length} in current view
+                </span>
+              </div>
+            </div>
+
+            {/* 6. Total Trips & KM */}
+            <div className="p-3.5 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 shadow-xs space-y-1.5 hover:border-indigo-300 dark:hover:border-indigo-800 transition-all">
+              <div className="flex items-center justify-between text-indigo-700 dark:text-indigo-300">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Fleet Trips & KM</span>
+                <div className="w-6 h-6 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                  <Truck className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div>
+                <span className="text-lg font-black font-mono text-indigo-900 dark:text-indigo-100 block tracking-tight">
+                  {stats.totalKm.toLocaleString('en-IN')} KM
+                </span>
+                <span className="text-[10px] font-medium text-indigo-600/80 dark:text-indigo-400/80 block mt-0.5">
+                  {stats.totalTrips} completed trips
+                </span>
+              </div>
             </div>
           </div>
 

@@ -252,6 +252,34 @@ export function DriverManager() {
     setCardOrderVersion((v) => v + 1);
   };
 
+  // Driver Fleet KPIs
+  const driverKpis = useMemo(() => {
+    let totalKm = 0;
+    let totalSalary = 0;
+    let totalTrips = 0;
+    let totalRateSum = 0;
+
+    drivers.forEach((d) => {
+      totalRateSum += Number(d.ratePerKm || 0);
+      const s = calculateDriverTotalStats(d, bills);
+      totalKm += s.totalKm;
+      totalSalary += s.totalSalary;
+      totalTrips += s.tripCount;
+    });
+
+    const avgRate = drivers.length > 0 ? totalRateSum / drivers.length : 0;
+    const activeCount = drivers.filter((d) => d.status !== 'inactive').length;
+
+    return {
+      totalDrivers: drivers.length,
+      activeCount,
+      totalSalary,
+      totalKm,
+      totalTrips,
+      avgRate,
+    };
+  }, [drivers, bills]);
+
   // Filtered drivers by search query and user-defined card order
   const filteredDrivers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -461,6 +489,77 @@ export function DriverManager() {
             <Plus className="w-4 h-4" />
             <span>Add Driver</span>
           </button>
+        </div>
+      </div>
+
+      {/* KPI Stats Overview */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Total Drivers</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <Users className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {driverKpis.totalDrivers} {driverKpis.totalDrivers === 1 ? 'Driver' : 'Drivers'}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              {driverKpis.activeCount} active on duty
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Total Driver Pay</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <Wallet className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              ₹ {Math.round(driverKpis.totalSalary).toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Cumulative trip salaries earned
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Distance Driven</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <Gauge className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {driverKpis.totalKm.toLocaleString('en-IN')} KM
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Across {driverKpis.totalTrips.toLocaleString('en-IN')} driver trips
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Avg Driver Rate</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
+              <User className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              ₹ {driverKpis.avgRate.toFixed(2)} / KM
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Fleet compensation rate
+            </p>
+          </div>
         </div>
       </div>
 

@@ -759,6 +759,23 @@ export function MaintenanceManager() {
     }, 400);
   };
 
+  // Fleet Maintenance KPIs
+  const maintenanceKpis = useMemo(() => {
+    let totalCost = 0;
+    maintenanceEntries.forEach((e) => {
+      totalCost += Number(e.amount) || 0;
+    });
+    const uniqueVehiclesServiced = new Set(maintenanceEntries.map((e) => e.vehicleNumber).filter(Boolean)).size;
+    const avgPerService = maintenanceEntries.length > 0 ? Math.round(totalCost / maintenanceEntries.length) : 0;
+    return {
+      totalCost,
+      totalEntries: maintenanceEntries.length,
+      workshopCount: workshopsList.length,
+      uniqueVehiclesServiced,
+      avgPerService,
+    };
+  }, [maintenanceEntries, workshopsList]);
+
   return (
     <div className="space-y-6">
       {/* Top Header: Matching Vehicle, Driver, and Fuel Managers */}
@@ -832,6 +849,77 @@ export function MaintenanceManager() {
             <Plus className="w-4 h-4" />
             <span>Add Repair Entry</span>
           </button>
+        </div>
+      </div>
+
+      {/* KPI Stats Overview */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Total Repair Spend</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <Wrench className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              Rs.{Math.round(maintenanceKpis.totalCost).toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Cumulative parts & workshop labor
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Service Orders</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <ClipboardList className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {maintenanceKpis.totalEntries} {maintenanceKpis.totalEntries === 1 ? 'Record' : 'Records'}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Servicing across {maintenanceKpis.uniqueVehiclesServiced} vehicles
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Partner Workshops</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <Building2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              {maintenanceKpis.workshopCount} {maintenanceKpis.workshopCount === 1 ? 'Workshop' : 'Workshops'}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Authorized service partners
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
+          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
+            <span className="text-[11px] uppercase font-bold tracking-wider">Avg Cost / Service</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
+              <Gauge className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+              Rs.{maintenanceKpis.avgPerService.toLocaleString('en-IN')}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
+              Average maintenance bill
+            </p>
+          </div>
         </div>
       </div>
 
