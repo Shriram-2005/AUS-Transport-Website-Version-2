@@ -389,25 +389,26 @@ export function DriverManager() {
   };
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Top Header & Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6">
+      {/* Top Header: Matching Vehicle, Fuel, Maintenance, and Expense Managers */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-gray-200 dark:border-zinc-800">
         <div>
-          <h1 className="text-[clamp(1.5rem,3vw,2.25rem)] font-bold tracking-tight text-gray-900 dark:text-white">
-            Drivers Management
-          </h1>
+          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
+            <Users className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+            <span>Drivers Management</span>
+          </h2>
           <p className="text-sm text-gray-500 dark:text-zinc-400 mt-1">
-            Manage drivers, kilometer rates, and live trip salary calculations from invoices.
+            Manage drivers, kilometer rates, and live trip salary calculations from invoices
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Reorder Cards Toggle Button */}
           <button
             type="button"
             onClick={() => setIsReorderMode((prev) => !prev)}
             title="Toggle driver card reordering"
-            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+            className={`inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shrink-0 ${
               isReorderMode
                 ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700 shadow-xs'
                 : 'bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800'
@@ -423,22 +424,22 @@ export function DriverManager() {
               type="button"
               onClick={handleResetCardOrder}
               title="Reset to default registration order"
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-gray-500 hover:text-red-600 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-950/40 border border-transparent transition-all cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold text-gray-500 hover:text-red-600 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-950/40 border border-transparent transition-all cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-3 h-3" />
               <span>Reset</span>
             </button>
           )}
 
           {/* Search Box */}
-          <div className="relative w-44 sm:w-56">
+          <div className="relative w-48 sm:w-60">
             <Search className="w-4 h-4 text-gray-400 dark:text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search driver name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3.5 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 text-xs font-medium focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
+              className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
             />
             {searchQuery && (
               <button
@@ -446,7 +447,7 @@ export function DriverManager() {
                 onClick={() => setSearchQuery('')}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-200 cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -455,7 +456,7 @@ export function DriverManager() {
           <button
             type="button"
             onClick={handleOpenAddModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer shrink-0"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-all cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span>Add Driver</span>
@@ -483,17 +484,17 @@ export function DriverManager() {
       {/* Drivers Grid */}
       {filteredDrivers.length === 0 ? (
         <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-12 text-center">
-          <Users className="w-10 h-10 text-gray-300 dark:text-zinc-700 mx-auto mb-3" />
-          <h3 className="text-sm font-bold text-gray-900 dark:text-zinc-100 mb-1">
+          <Users className="w-12 h-12 text-gray-300 dark:text-zinc-700 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-gray-900 dark:text-zinc-100 mb-1">
             No Drivers Found
           </h3>
-          <p className="text-xs text-gray-500 dark:text-zinc-400 mb-4">
+          <p className="text-sm text-gray-500 dark:text-zinc-400 mb-4">
             {searchQuery ? `No drivers matched "${searchQuery}"` : 'Get started by adding your first driver.'}
           </p>
           <button
             type="button"
             onClick={handleOpenAddModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Driver</span>
@@ -546,21 +547,21 @@ export function DriverManager() {
                 <div className="flex items-center justify-between">
                   {/* 1. Driver Name */}
                   <div className="space-y-1">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
+                    <span className="text-xs uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
                       Driver Name
                     </span>
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1 shrink-0" title="Drag to reorder card">
                         <GripVertical className="w-4 h-4 text-gray-300 group-hover:text-gray-500 dark:text-zinc-600 dark:group-hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0" />
-                        <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-                          <User className="w-4 h-4" />
+                        <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                          <User className="w-5 h-5" />
                         </div>
                       </div>
                       <div>
-                        <h3 className="text-base font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight">
+                        <h3 className="text-xl font-extrabold font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
                           {driver.name}
                         </h3>
-                        <p className="text-[11px] font-mono font-semibold text-emerald-700 dark:text-emerald-400">
+                        <p className="text-xs font-mono font-semibold text-emerald-700 dark:text-emerald-400">
                           Rate: ₹{Number(driver.ratePerKm || 0).toFixed(2)} / KM
                         </p>
                       </div>
@@ -569,15 +570,15 @@ export function DriverManager() {
 
                   {/* 2. Total KMs & Salary Summary */}
                   <div className="text-right pr-3 space-y-1">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
+                    <span className="text-xs uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
                       Total Salary
                     </span>
                     <div className="flex items-baseline justify-end gap-1 font-mono">
-                      <span className="text-xl font-black text-gray-900 dark:text-zinc-100 tracking-tight">
+                      <span className="text-2xl font-black text-gray-900 dark:text-zinc-100 tracking-tight">
                         ₹{Math.round(totalStats.totalSalary).toLocaleString('en-IN')}
                       </span>
                     </div>
-                    <p className="text-[10px] font-mono font-medium text-gray-500 dark:text-zinc-400">
+                    <p className="text-xs font-mono font-medium text-gray-500 dark:text-zinc-400">
                       {totalStats.totalKm.toLocaleString('en-IN')} KM ({totalStats.tripCount} {totalStats.tripCount === 1 ? 'trip' : 'trips'})
                     </p>
                   </div>

@@ -79,3 +79,4 @@ export function applyCardOrder<T>(items: T[], getId: (item: T) => string, catego
     return indexA - indexB;
   });
 }
+

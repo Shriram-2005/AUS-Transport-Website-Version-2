@@ -380,26 +380,26 @@ export function VehicleManager() {
   };
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-16 animate-in fade-in duration-200">
-      {/* Header and Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-gray-200 dark:border-zinc-800 shadow-xs">
+    <div className="space-y-6">
+      {/* Top Header: Matching Fuel, Maintenance, and Expense Managers */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-gray-200 dark:border-zinc-800">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-zinc-100 flex items-center gap-2">
-            <Truck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            <span>Vehicles</span>
+          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
+            <Truck className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+            <span>Vehicles Management</span>
           </h2>
-          <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">
+          <p className="text-sm text-gray-500 dark:text-zinc-400 mt-1">
             Fleet vehicle numbers and live odometer readings automatically synced with entered bills
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Reorder Cards Toggle Button */}
           <button
             type="button"
             onClick={() => setIsReorderMode((prev) => !prev)}
             title="Toggle vehicle card reordering"
-            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+            className={`inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shrink-0 ${
               isReorderMode
                 ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700 shadow-xs'
                 : 'bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800'
@@ -415,7 +415,7 @@ export function VehicleManager() {
               type="button"
               onClick={handleResetCardOrder}
               title="Reset to default registration order"
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-gray-500 hover:text-red-600 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-950/40 border border-transparent transition-all cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold text-gray-500 hover:text-red-600 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-950/40 border border-transparent transition-all cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
               <span>Reset</span>
@@ -423,22 +423,22 @@ export function VehicleManager() {
           )}
 
           {/* Search Box */}
-          <div className="relative w-44 sm:w-56">
+          <div className="relative w-48 sm:w-60">
             <Search className="w-4 h-4 text-gray-400 dark:text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search vehicle number..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3.5 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 text-xs font-medium focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
+              className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-200"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-200 cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -447,7 +447,7 @@ export function VehicleManager() {
           <button
             type="button"
             onClick={handleOpenAddModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer shrink-0"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-all cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span>Add Vehicle</span>
@@ -475,17 +475,17 @@ export function VehicleManager() {
       {/* Vehicles Grid - Strictly displaying Vehicle Number, Current KM, and 3-dot Menu */}
       {filteredVehicles.length === 0 ? (
         <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-12 text-center">
-          <Truck className="w-10 h-10 text-gray-300 dark:text-zinc-700 mx-auto mb-3" />
-          <h3 className="text-sm font-bold text-gray-900 dark:text-zinc-100 mb-1">
+          <Truck className="w-12 h-12 text-gray-300 dark:text-zinc-700 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-gray-900 dark:text-zinc-100 mb-1">
             No Vehicles Found
           </h3>
-          <p className="text-xs text-gray-500 dark:text-zinc-400 mb-4">
-            {searchQuery ? `No vehicles matched "${searchQuery}"` : 'Get started by adding your first vehicle'}
+          <p className="text-sm text-gray-500 dark:text-zinc-400 mb-4">
+            {searchQuery ? `No vehicles matched "${searchQuery}"` : 'Get started by adding your first vehicle.'}
           </p>
           <button
             type="button"
             onClick={handleOpenAddModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Vehicle</span>
@@ -538,35 +538,43 @@ export function VehicleManager() {
                 <div className="flex items-center justify-between">
                   {/* 1. Vehicle Number */}
                   <div className="space-y-1">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
+                    <span className="text-xs uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
                       Vehicle Number
                     </span>
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1 shrink-0" title="Drag to reorder card">
                         <GripVertical className="w-4 h-4 text-gray-300 group-hover:text-gray-500 dark:text-zinc-600 dark:group-hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0" />
-                        <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
-                          <Truck className="w-4 h-4" />
+                        <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                          <Truck className="w-5 h-5" />
                         </div>
                       </div>
-                      <h3 className="text-lg font-extrabold font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-                        {vehicle.registrationNumber}
-                      </h3>
+                      <div>
+                        <h3 className="text-xl font-extrabold font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+                          {vehicle.registrationNumber}
+                        </h3>
+                        <p className="text-xs font-mono font-semibold text-blue-700 dark:text-blue-400">
+                          {totalRecordedKm > 0 ? `${totalRecordedKm.toLocaleString('en-IN')} KM logged` : 'Fleet Vehicle'}
+                        </p>
+                      </div>
                     </div>
                   </div>
 
                   {/* 2. Current KM */}
                   <div className="text-right pr-3 space-y-1">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
+                    <span className="text-xs uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
                       Current KM
                     </span>
                     <div className="flex items-baseline justify-end gap-1 font-mono">
-                      <span className="text-xl font-black text-gray-900 dark:text-zinc-100 tracking-tight">
+                      <span className="text-2xl font-black text-gray-900 dark:text-zinc-100 tracking-tight">
                         {Number(vehicle.currentKm || 0).toLocaleString('en-IN')}
                       </span>
                       <span className="text-xs font-semibold text-gray-500 dark:text-zinc-400">
                         KM
                       </span>
                     </div>
+                    <p className="text-xs font-mono font-medium text-gray-500 dark:text-zinc-400">
+                      Odometer Reading
+                    </p>
                   </div>
 
                   {/* 3. Action Menu & Quick Reorder Controls */}
