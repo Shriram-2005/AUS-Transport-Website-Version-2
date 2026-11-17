@@ -13,7 +13,13 @@ import {
   Check,
   AlertTriangle,
   RotateCcw,
-  Calendar
+  Calendar,
+  GripVertical,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -32,12 +38,26 @@ import {
   INVOICES_CHANGE_EVENT
 } from '@/lib/invoices';
 import { REFRESH_MODULE_EVENT } from '@/lib/headerEvents';
+import {
+  applyCardOrder,
+  saveStoredCardOrder,
+  resetStoredCardOrder,
+  moveItemInArray,
+  getStoredCardOrder,
+  CARD_ORDER_CHANGE_EVENT,
+} from '@/lib/cardOrder';
 
 export function VehicleManager() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [bills, setBills] = useState<BillData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  // Card reordering state
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [cardOrderVersion, setCardOrderVersion] = useState(0);
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -184,14 +204,62 @@ export function VehicleManager() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Filtered vehicles by search query
+  // Listen for card order changes from other components or tabs
+  useEffect(() => {
+    const handleOrderChange = (e: any) => {
+      if (!e.detail || e.detail.category === 'vehicles') {
+        setCardOrderVersion((v) => v + 1);
+      }
+    };
+    window.addEventListener(CARD_ORDER_CHANGE_EVENT as any, handleOrderChange);
+    return () => window.removeEventListener(CARD_ORDER_CHANGE_EVENT as any, handleOrderChange);
+  }, []);
+
+  // Reorder card handlers
+  const handleMoveCard = (vehicleReg: string, direction: 'up' | 'down') => {
+    const currentOrdered = applyCardOrder(vehicles, (v) => v.registrationNumber, 'vehicles');
+    const index = currentOrdered.findIndex(
+      (v) => v.registrationNumber.toLowerCase() === vehicleReg.toLowerCase()
+    );
+    if (index === -1) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= currentOrdered.length) return;
+
+    const reordered = moveItemInArray(currentOrdered, index, targetIndex);
+    const newOrder = reordered.map((v) => v.registrationNumber);
+    saveStoredCardOrder('vehicles', newOrder);
+    setCardOrderVersion((v) => v + 1);
+  };
+
+  const handleReorderCards = (sourceReg: string, targetReg: string) => {
+    const currentOrdered = applyCardOrder(vehicles, (v) => v.registrationNumber, 'vehicles');
+    const fromIndex = currentOrdered.findIndex(
+      (v) => v.registrationNumber.toLowerCase() === sourceReg.toLowerCase()
+    );
+    const toIndex = currentOrdered.findIndex(
+      (v) => v.registrationNumber.toLowerCase() === targetReg.toLowerCase()
+    );
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+
+    const reordered = moveItemInArray(currentOrdered, fromIndex, toIndex);
+    const newOrder = reordered.map((v) => v.registrationNumber);
+    saveStoredCardOrder('vehicles', newOrder);
+    setCardOrderVersion((v) => v + 1);
+  };
+
+  const handleResetCardOrder = () => {
+    resetStoredCardOrder('vehicles');
+    setCardOrderVersion((v) => v + 1);
+  };
+
+  // Filtered vehicles by search query and user-defined card order
   const filteredVehicles = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return vehicles;
-    return vehicles.filter((v) =>
-      v.registrationNumber.toLowerCase().includes(query)
-    );
-  }, [vehicles, searchQuery]);
+    const list = !query
+      ? vehicles
+      : vehicles.filter((v) => v.registrationNumber.toLowerCase().includes(query));
+    return applyCardOrder(list, (v) => v.registrationNumber, 'vehicles');
+  }, [vehicles, searchQuery, cardOrderVersion]);
 
   // Open Add Modal
   const handleOpenAddModal = () => {
@@ -325,9 +393,37 @@ export function VehicleManager() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Reorder Cards Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setIsReorderMode((prev) => !prev)}
+            title="Toggle vehicle card reordering"
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+              isReorderMode
+                ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700 shadow-xs'
+                : 'bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <ArrowUpDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <span>{isReorderMode ? 'Done Reordering' : 'Reorder Cards'}</span>
+          </button>
+
+          {/* Reset Order Button */}
+          {getStoredCardOrder('vehicles').length > 0 && (
+            <button
+              type="button"
+              onClick={handleResetCardOrder}
+              title="Reset to default registration order"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-gray-500 hover:text-red-600 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-950/40 border border-transparent transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset</span>
+            </button>
+          )}
+
           {/* Search Box */}
-          <div className="relative w-48 sm:w-60">
+          <div className="relative w-44 sm:w-56">
             <Search className="w-4 h-4 text-gray-400 dark:text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -359,6 +455,23 @@ export function VehicleManager() {
         </div>
       </div>
 
+      {/* Reordering Instructions Banner */}
+      {isReorderMode && (
+        <div className="px-4 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-blue-800 dark:text-blue-300 text-xs flex items-center justify-between animate-in fade-in duration-100">
+          <div className="flex items-center gap-2">
+            <GripVertical className="w-4 h-4" />
+            <span>Reorder Mode: Drag cards or use the arrow buttons to arrange vehicles in your preferred order.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsReorderMode(false)}
+            className="font-bold underline hover:no-underline cursor-pointer"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
       {/* Vehicles Grid - Strictly displaying Vehicle Number, Current KM, and 3-dot Menu */}
       {filteredVehicles.length === 0 ? (
         <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-12 text-center">
@@ -380,14 +493,46 @@ export function VehicleManager() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredVehicles.map((vehicle) => {
+          {filteredVehicles.map((vehicle, index) => {
             const monthlyStats = calculateVehicleMonthlyKm(vehicle.registrationNumber, bills);
             const totalRecordedKm = monthlyStats.reduce((acc, curr) => acc + curr.totalKm, 0);
 
             return (
               <div
                 key={vehicle.id}
-                className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs hover:border-gray-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between relative group"
+                draggable={true}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', vehicle.registrationNumber);
+                  setDraggedCardId(vehicle.registrationNumber);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedCardId && draggedCardId !== vehicle.registrationNumber) {
+                    setDragOverCardId(vehicle.registrationNumber);
+                  }
+                }}
+                onDragLeave={() => {
+                  if (dragOverCardId === vehicle.registrationNumber) {
+                    setDragOverCardId(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const sourceId = e.dataTransfer.getData('text/plain') || draggedCardId;
+                  const targetId = vehicle.registrationNumber;
+                  if (sourceId && targetId && sourceId !== targetId) {
+                    handleReorderCards(sourceId, targetId);
+                  }
+                  setDraggedCardId(null);
+                  setDragOverCardId(null);
+                }}
+                className={`bg-white dark:bg-zinc-900 border rounded-2xl p-5 shadow-xs transition-all flex flex-col justify-between relative group ${
+                  draggedCardId === vehicle.registrationNumber
+                    ? 'opacity-40 border-blue-400 scale-[0.99]'
+                    : dragOverCardId === vehicle.registrationNumber
+                    ? 'border-blue-500 ring-2 ring-blue-500/40 scale-[1.01]'
+                    : 'border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700'
+                }`}
               >
                 {/* Top Section: Vehicle Number, Current KM, and 3-Dot Menu */}
                 <div className="flex items-center justify-between">
@@ -397,8 +542,11 @@ export function VehicleManager() {
                       Vehicle Number
                     </span>
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
-                        <Truck className="w-4 h-4" />
+                      <div className="flex items-center gap-1 shrink-0" title="Drag to reorder card">
+                        <GripVertical className="w-4 h-4 text-gray-300 group-hover:text-gray-500 dark:text-zinc-600 dark:group-hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0" />
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                          <Truck className="w-4 h-4" />
+                        </div>
                       </div>
                       <h3 className="text-lg font-extrabold font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
                         {vehicle.registrationNumber}
@@ -421,72 +569,136 @@ export function VehicleManager() {
                     </div>
                   </div>
 
-                  {/* 3. 3-Dot Menu Options */}
-                  <div className="relative vehicle-action-menu shrink-0">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveMenuId(activeMenuId === vehicle.id ? null : vehicle.id);
-                      }}
-                      title="Vehicle Operations"
-                      className="w-9 h-9 rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-800/80 hover:bg-gray-100 dark:hover:bg-zinc-700/80 text-gray-700 dark:text-zinc-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
-                    >
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
-
-                    {/* Dropdown Menu */}
-                    {activeMenuId === vehicle.id && (
-                      <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-30 p-1.5 space-y-0.5 animate-in fade-in-50 zoom-in-95 duration-100">
-                        {/* Edit Option */}
+                  {/* 3. Action Menu & Quick Reorder Controls */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isReorderMode && (
+                      <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-zinc-800 p-1 rounded-xl border border-gray-200 dark:border-zinc-700">
                         <button
                           type="button"
-                          onClick={() => handleOpenEditModal(vehicle)}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          <span>Edit Vehicle</span>
-                        </button>
-
-                        {/* Quick Update KM Option */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenQuickKm(vehicle)}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
-                        >
-                          <Gauge className="w-3.5 h-3.5" />
-                          <span>Update Current KM</span>
-                        </button>
-
-                        {/* Reset KM Option */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateStoredVehicle(vehicle.id, { currentKm: 0 });
-                            setActiveMenuId(null);
+                          disabled={index === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveCard(vehicle.registrationNumber, 'up');
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors cursor-pointer text-left"
+                          title="Move earlier (left / up)"
+                          className="p-1 rounded-lg text-gray-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
                         >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Reset KM to 0</span>
+                          <ChevronLeft className="w-3.5 h-3.5" />
                         </button>
-
-                        <div className="border-t border-gray-100 dark:border-zinc-800 my-1" />
-
-                        {/* Delete Option */}
+                        <span className="text-[10px] font-mono font-bold text-gray-500 dark:text-zinc-400 px-1">
+                          {index + 1}
+                        </span>
                         <button
                           type="button"
-                          onClick={() => {
-                            setDeletingVehicle(vehicle);
-                            setActiveMenuId(null);
+                          disabled={index === filteredVehicles.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveCard(vehicle.registrationNumber, 'down');
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg transition-colors cursor-pointer text-left"
+                          title="Move later (right / down)"
+                          className="p-1 rounded-lg text-gray-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Delete Vehicle</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     )}
+
+                    <div className="relative vehicle-action-menu shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuId(activeMenuId === vehicle.id ? null : vehicle.id);
+                        }}
+                        title="Vehicle Operations"
+                        className="w-9 h-9 rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-800/80 hover:bg-gray-100 dark:hover:bg-zinc-700/80 text-gray-700 dark:text-zinc-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {activeMenuId === vehicle.id && (
+                        <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-30 p-1.5 space-y-0.5 animate-in fade-in-50 zoom-in-95 duration-100">
+                          {/* Edit Option */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(vehicle)}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <span>Edit Vehicle</span>
+                          </button>
+
+                          {/* Quick Update KM Option */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenQuickKm(vehicle)}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
+                          >
+                            <Gauge className="w-3.5 h-3.5" />
+                            <span>Update Current KM</span>
+                          </button>
+
+                          {/* Reset KM Option */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateStoredVehicle(vehicle.id, { currentKm: 0 });
+                              setActiveMenuId(null);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors cursor-pointer text-left"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Reset KM to 0</span>
+                          </button>
+
+                          {/* Reorder Card Position */}
+                          <div className="pt-1 mt-1 border-t border-gray-100 dark:border-zinc-800">
+                            <button
+                              type="button"
+                              disabled={index === 0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveCard(vehicle.registrationNumber, 'up');
+                                setActiveMenuId(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Move Earlier (Left / Up)</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={index === filteredVehicles.length - 1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveCard(vehicle.registrationNumber, 'down');
+                                setActiveMenuId(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Move Later (Right / Down)</span>
+                            </button>
+                          </div>
+
+                          <div className="border-t border-gray-100 dark:border-zinc-800 my-1" />
+
+                          {/* Delete Option */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeletingVehicle(vehicle);
+                              setActiveMenuId(null);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg transition-colors cursor-pointer text-left"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete Vehicle</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 

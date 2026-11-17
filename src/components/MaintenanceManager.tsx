@@ -18,7 +18,14 @@ import {
   Building2,
   Calendar,
   Gauge,
-  ClipboardList
+  ClipboardList,
+  RotateCcw,
+  GripVertical,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -35,11 +42,20 @@ import {
   filterMaintenanceEntries,
   calculateMaintenanceSummary,
   numberToWords,
+  parseDateToTimestamp,
   MAINTENANCE_ENTRIES_CHANGE_EVENT
 } from '@/lib/maintenance';
 import { Vehicle, getStoredVehicles, VEHICLES_CHANGE_EVENT } from '@/lib/vehicles';
 import { CustomDatePicker } from './CustomDatePicker';
 import { REFRESH_MODULE_EVENT } from '@/lib/headerEvents';
+import {
+  applyCardOrder,
+  saveStoredCardOrder,
+  resetStoredCardOrder,
+  moveItemInArray,
+  getStoredCardOrder,
+  CARD_ORDER_CHANGE_EVENT,
+} from '@/lib/cardOrder';
 
 function getTodayDDMMYYYY(): string {
   const d = new Date();
@@ -56,6 +72,12 @@ export function MaintenanceManager() {
   const [workshopsList, setWorkshopsList] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  // Card reordering state
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [cardOrderVersion, setCardOrderVersion] = useState(0);
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -246,12 +268,60 @@ export function MaintenanceManager() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Filter vehicles by search query
+  // Listen for card order changes from other components or tabs
+  useEffect(() => {
+    const handleOrderChange = (e: any) => {
+      if (!e.detail || e.detail.category === 'maintenance') {
+        setCardOrderVersion((v) => v + 1);
+      }
+    };
+    window.addEventListener(CARD_ORDER_CHANGE_EVENT as any, handleOrderChange);
+    return () => window.removeEventListener(CARD_ORDER_CHANGE_EVENT as any, handleOrderChange);
+  }, []);
+
+  // Reorder card handlers
+  const handleMoveCard = (vehicleReg: string, direction: 'up' | 'down') => {
+    const currentOrdered = applyCardOrder(vehicles, (v) => v.registrationNumber, 'maintenance');
+    const index = currentOrdered.findIndex(
+      (v) => v.registrationNumber.toLowerCase() === vehicleReg.toLowerCase()
+    );
+    if (index === -1) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= currentOrdered.length) return;
+
+    const reordered = moveItemInArray(currentOrdered, index, targetIndex);
+    const newOrder = reordered.map((v) => v.registrationNumber);
+    saveStoredCardOrder('maintenance', newOrder);
+    setCardOrderVersion((v) => v + 1);
+  };
+
+  const handleReorderCards = (sourceReg: string, targetReg: string) => {
+    const currentOrdered = applyCardOrder(vehicles, (v) => v.registrationNumber, 'maintenance');
+    const fromIndex = currentOrdered.findIndex(
+      (v) => v.registrationNumber.toLowerCase() === sourceReg.toLowerCase()
+    );
+    const toIndex = currentOrdered.findIndex(
+      (v) => v.registrationNumber.toLowerCase() === targetReg.toLowerCase()
+    );
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+
+    const reordered = moveItemInArray(currentOrdered, fromIndex, toIndex);
+    const newOrder = reordered.map((v) => v.registrationNumber);
+    saveStoredCardOrder('maintenance', newOrder);
+    setCardOrderVersion((v) => v + 1);
+  };
+
+  const handleResetCardOrder = () => {
+    resetStoredCardOrder('maintenance');
+    setCardOrderVersion((v) => v + 1);
+  };
+
+  // Filter vehicles by search query and apply custom card order
   const filteredVehicles = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return vehicles;
-    return vehicles.filter((v) => v.registrationNumber.toLowerCase().includes(q));
-  }, [vehicles, searchQuery]);
+    const list = !q ? vehicles : vehicles.filter((v) => v.registrationNumber.toLowerCase().includes(q));
+    return applyCardOrder(list, (v) => v.registrationNumber, 'maintenance');
+  }, [vehicles, searchQuery, cardOrderVersion]);
 
   // Open Add Maintenance Entry modal (optionally preselecting a vehicle)
   // Ensures Price starts completely blank with no pre-existing rate
@@ -703,16 +773,44 @@ export function MaintenanceManager() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Reorder Cards Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setIsReorderMode((prev) => !prev)}
+            title="Toggle card reordering"
+            className={`inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+              isReorderMode
+                ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700 shadow-xs'
+                : 'bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <ArrowUpDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <span>{isReorderMode ? 'Done Reordering' : 'Reorder Cards'}</span>
+          </button>
+
+          {/* Reset Order Button */}
+          {getStoredCardOrder('maintenance').length > 0 && (
+            <button
+              type="button"
+              onClick={handleResetCardOrder}
+              title="Reset to default registration order"
+              className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold text-gray-500 hover:text-red-600 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-950/40 border border-transparent transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset</span>
+            </button>
+          )}
+
           {/* Search Box */}
-          <div className="relative w-52 sm:w-64">
+          <div className="relative w-48 sm:w-60">
             <Search className="w-4 h-4 text-gray-400 dark:text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search vehicle number..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 text-sm font-medium focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
+              className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-gray-50/50 dark:bg-zinc-800/50 text-gray-900 dark:text-zinc-100 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
             />
             {searchQuery && (
               <button
@@ -729,13 +827,30 @@ export function MaintenanceManager() {
           <button
             type="button"
             onClick={() => handleOpenAddModal()}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-xs transition-all cursor-pointer shrink-0"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-all cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span>Add Repair Entry</span>
           </button>
         </div>
       </div>
+
+      {/* Reordering Instructions Banner */}
+      {isReorderMode && (
+        <div className="px-4 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-blue-800 dark:text-blue-300 text-xs flex items-center justify-between animate-in fade-in duration-100">
+          <div className="flex items-center gap-2">
+            <GripVertical className="w-4 h-4" />
+            <span>Reorder Mode: Drag cards or use the arrow buttons to arrange vehicles in your preferred order.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsReorderMode(false)}
+            className="font-bold underline hover:no-underline cursor-pointer"
+          >
+            Done
+          </button>
+        </div>
+      )}
 
       {/* Vehicles Maintenance Grid: 2-Column Responsive Cards matching VehicleManager & FuelManager */}
       {filteredVehicles.length === 0 ? (
@@ -750,16 +865,13 @@ export function MaintenanceManager() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredVehicles.map((vehicle) => {
+          {filteredVehicles.map((vehicle, index) => {
             const vehicleEntries = maintenanceEntries
               .filter((e) => e.vehicleNumber === vehicle.registrationNumber)
               .sort((a, b) => {
-                const parseD = (s: string) => {
-                  const parts = s.split('-');
-                  if (parts.length === 3) return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0])).getTime();
-                  return new Date(s).getTime() || 0;
-                };
-                return parseD(b.date) - parseD(a.date);
+                const diff = parseDateToTimestamp(b.date) - parseDateToTimestamp(a.date);
+                if (diff !== 0) return diff;
+                return (parseDateToTimestamp(b.createdAt) || 0) - (parseDateToTimestamp(a.createdAt) || 0);
               });
 
             const stats = calculateMaintenanceSummary(vehicleEntries);
@@ -768,7 +880,39 @@ export function MaintenanceManager() {
             return (
               <div
                 key={vehicle.id}
-                className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs hover:border-gray-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between relative group"
+                draggable={true}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', vehicle.registrationNumber);
+                  setDraggedCardId(vehicle.registrationNumber);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedCardId && draggedCardId !== vehicle.registrationNumber) {
+                    setDragOverCardId(vehicle.registrationNumber);
+                  }
+                }}
+                onDragLeave={() => {
+                  if (dragOverCardId === vehicle.registrationNumber) {
+                    setDragOverCardId(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const sourceId = e.dataTransfer.getData('text/plain') || draggedCardId;
+                  const targetId = vehicle.registrationNumber;
+                  if (sourceId && targetId && sourceId !== targetId) {
+                    handleReorderCards(sourceId, targetId);
+                  }
+                  setDraggedCardId(null);
+                  setDragOverCardId(null);
+                }}
+                className={`bg-white dark:bg-zinc-900 border rounded-2xl p-5 shadow-xs transition-all flex flex-col justify-between relative group ${
+                  draggedCardId === vehicle.registrationNumber
+                    ? 'opacity-40 border-blue-400 scale-[0.99]'
+                    : dragOverCardId === vehicle.registrationNumber
+                    ? 'border-blue-500 ring-2 ring-blue-500/40 scale-[1.01]'
+                    : 'border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700'
+                }`}
               >
                 {/* Top Section: Vehicle Number, Repair Cost, and 3-Dot Menu */}
                 <div className="flex items-center justify-between">
@@ -777,9 +921,12 @@ export function MaintenanceManager() {
                     <span className="text-xs uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
                       Vehicle Number
                     </span>
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-                        <Truck className="w-5 h-5" />
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 shrink-0" title="Drag to reorder card">
+                        <GripVertical className="w-4 h-4 text-gray-300 group-hover:text-gray-500 dark:text-zinc-600 dark:group-hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0" />
+                        <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                          <Truck className="w-5 h-5" />
+                        </div>
                       </div>
                       <div>
                         <h3 className="text-xl font-extrabold font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
@@ -807,57 +954,121 @@ export function MaintenanceManager() {
                     </p>
                   </div>
 
-                  {/* 3. 3-Dot Menu Options */}
-                  <div className="relative maintenance-action-menu shrink-0">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveMenuId(activeMenuId === vehicle.id ? null : vehicle.id);
-                      }}
-                      title="Maintenance Operations"
-                      className="w-9 h-9 rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-800/80 hover:bg-gray-100 dark:hover:bg-zinc-700/80 text-gray-700 dark:text-zinc-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
-                    >
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
-
-                    {/* Dropdown Menu */}
-                    {activeMenuId === vehicle.id && (
-                      <div className="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-30 p-1.5 space-y-0.5 animate-in fade-in-50 zoom-in-95 duration-100">
-                        {/* Add Repair Entry Option */}
+                  {/* 3. Action Menu & Quick Reorder Controls */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isReorderMode && (
+                      <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-zinc-800 p-1 rounded-xl border border-gray-200 dark:border-zinc-700">
                         <button
                           type="button"
-                          onClick={() => handleOpenAddModal(vehicle.registrationNumber)}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
-                        >
-                          <Plus className="w-4 h-4 text-blue-600" />
-                          <span>Add Repair Entry</span>
-                        </button>
-
-                        {/* Generate Statement Option */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenStatement(vehicle.registrationNumber)}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
-                        >
-                          <Printer className="w-4 h-4 text-indigo-600" />
-                          <span>Generate Statement (PDF)</span>
-                        </button>
-
-                        {/* View All History Option */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setHistoryVehicle(vehicle.registrationNumber);
-                            setActiveMenuId(null);
+                          disabled={index === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveCard(vehicle.registrationNumber, 'up');
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer text-left"
+                          title="Move earlier (left / up)"
+                          className="p-1 rounded-lg text-gray-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
                         >
-                          <ExternalLink className="w-4 h-4 text-gray-500" />
-                          <span>View All Repairs ({stats.serviceCount})</span>
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="text-[10px] font-mono font-bold text-gray-500 dark:text-zinc-400 px-1">
+                          {index + 1}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={index === filteredVehicles.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveCard(vehicle.registrationNumber, 'down');
+                          }}
+                          title="Move later (right / down)"
+                          className="p-1 rounded-lg text-gray-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     )}
+
+                    <div className="relative maintenance-action-menu shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuId(activeMenuId === vehicle.id ? null : vehicle.id);
+                        }}
+                        title="Maintenance Operations"
+                        className="w-9 h-9 rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-800/80 hover:bg-gray-100 dark:hover:bg-zinc-700/80 text-gray-700 dark:text-zinc-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {activeMenuId === vehicle.id && (
+                        <div className="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-30 p-1.5 space-y-0.5 animate-in fade-in-50 zoom-in-95 duration-100">
+                          {/* Add Repair Entry Option */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAddModal(vehicle.registrationNumber)}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
+                          >
+                            <Plus className="w-4 h-4 text-blue-600" />
+                            <span>Add Repair Entry</span>
+                          </button>
+
+                          {/* Generate Statement Option */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenStatement(vehicle.registrationNumber)}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
+                          >
+                            <Printer className="w-4 h-4 text-indigo-600" />
+                            <span>Generate Statement (PDF)</span>
+                          </button>
+
+                          {/* View All History Option */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHistoryVehicle(vehicle.registrationNumber);
+                              setActiveMenuId(null);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer text-left"
+                          >
+                            <ExternalLink className="w-4 h-4 text-gray-500" />
+                            <span>View All Repairs ({stats.serviceCount})</span>
+                          </button>
+
+                          {/* Reorder Card Position */}
+                          <div className="pt-1 mt-1 border-t border-gray-100 dark:border-zinc-800">
+                            <button
+                              type="button"
+                              disabled={index === 0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveCard(vehicle.registrationNumber, 'up');
+                                setActiveMenuId(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <ArrowUp className="w-4 h-4 text-blue-600" />
+                              <span>Move Earlier (Left / Up)</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={index === filteredVehicles.length - 1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveCard(vehicle.registrationNumber, 'down');
+                                setActiveMenuId(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <ArrowDown className="w-4 h-4 text-blue-600" />
+                              <span>Move Later (Right / Down)</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1345,6 +1556,11 @@ export function MaintenanceManager() {
                 <tbody className="divide-y divide-gray-100 dark:divide-zinc-800/80">
                   {maintenanceEntries
                     .filter((e) => e.vehicleNumber === historyVehicle)
+                    .sort((a, b) => {
+                      const diff = parseDateToTimestamp(b.date) - parseDateToTimestamp(a.date);
+                      if (diff !== 0) return diff;
+                      return (parseDateToTimestamp(b.createdAt) || 0) - (parseDateToTimestamp(a.createdAt) || 0);
+                    })
                     .map((entry) => (
                       <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
                         <td className="py-3 px-3.5 font-mono font-medium text-gray-900 dark:text-zinc-100 whitespace-nowrap">

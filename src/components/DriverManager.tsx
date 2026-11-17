@@ -14,7 +14,13 @@ import {
   Gauge,
   User,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  GripVertical,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import {
   Driver,
@@ -34,12 +40,26 @@ import {
 } from '@/lib/invoices';
 import { createClient } from '@/lib/supabase/client';
 import { REFRESH_MODULE_EVENT } from '@/lib/headerEvents';
+import {
+  applyCardOrder,
+  saveStoredCardOrder,
+  resetStoredCardOrder,
+  moveItemInArray,
+  getStoredCardOrder,
+  CARD_ORDER_CHANGE_EVENT,
+} from '@/lib/cardOrder';
 
 export function DriverManager() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [bills, setBills] = useState<BillData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  // Card reordering state
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [cardOrderVersion, setCardOrderVersion] = useState(0);
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -190,12 +210,54 @@ export function DriverManager() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Filtered drivers by search query
+  // Listen for card order changes from other components or tabs
+  useEffect(() => {
+    const handleOrderChange = (e: any) => {
+      if (!e.detail || e.detail.category === 'drivers') {
+        setCardOrderVersion((v) => v + 1);
+      }
+    };
+    window.addEventListener(CARD_ORDER_CHANGE_EVENT as any, handleOrderChange);
+    return () => window.removeEventListener(CARD_ORDER_CHANGE_EVENT as any, handleOrderChange);
+  }, []);
+
+  // Reorder card handlers
+  const handleMoveCard = (driverId: string, direction: 'up' | 'down') => {
+    const currentOrdered = applyCardOrder(drivers, (d) => d.id, 'drivers');
+    const index = currentOrdered.findIndex((d) => d.id === driverId);
+    if (index === -1) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= currentOrdered.length) return;
+
+    const reordered = moveItemInArray(currentOrdered, index, targetIndex);
+    const newOrder = reordered.map((d) => d.id);
+    saveStoredCardOrder('drivers', newOrder);
+    setCardOrderVersion((v) => v + 1);
+  };
+
+  const handleReorderCards = (sourceId: string, targetId: string) => {
+    const currentOrdered = applyCardOrder(drivers, (d) => d.id, 'drivers');
+    const fromIndex = currentOrdered.findIndex((d) => d.id === sourceId);
+    const toIndex = currentOrdered.findIndex((d) => d.id === targetId);
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+
+    const reordered = moveItemInArray(currentOrdered, fromIndex, toIndex);
+    const newOrder = reordered.map((d) => d.id);
+    saveStoredCardOrder('drivers', newOrder);
+    setCardOrderVersion((v) => v + 1);
+  };
+
+  const handleResetCardOrder = () => {
+    resetStoredCardOrder('drivers');
+    setCardOrderVersion((v) => v + 1);
+  };
+
+  // Filtered drivers by search query and user-defined card order
   const filteredDrivers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return drivers;
-    return drivers.filter((d) => d.name.toLowerCase().includes(q));
-  }, [drivers, searchQuery]);
+    const list = !q ? drivers : drivers.filter((d) => d.name.toLowerCase().includes(q));
+    return applyCardOrder(list, (d) => d.id, 'drivers');
+  }, [drivers, searchQuery, cardOrderVersion]);
 
   // Open Add Driver Modal
   const handleOpenAddModal = () => {
@@ -339,9 +401,37 @@ export function DriverManager() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Reorder Cards Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setIsReorderMode((prev) => !prev)}
+            title="Toggle driver card reordering"
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+              isReorderMode
+                ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700 shadow-xs'
+                : 'bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <ArrowUpDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <span>{isReorderMode ? 'Done Reordering' : 'Reorder Cards'}</span>
+          </button>
+
+          {/* Reset Order Button */}
+          {getStoredCardOrder('drivers').length > 0 && (
+            <button
+              type="button"
+              onClick={handleResetCardOrder}
+              title="Reset to default registration order"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-gray-500 hover:text-red-600 hover:bg-red-50 dark:text-zinc-400 dark:hover:text-red-400 dark:hover:bg-red-950/40 border border-transparent transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset</span>
+            </button>
+          )}
+
           {/* Search Box */}
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-44 sm:w-56">
             <Search className="w-4 h-4 text-gray-400 dark:text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -373,6 +463,23 @@ export function DriverManager() {
         </div>
       </div>
 
+      {/* Reordering Instructions Banner */}
+      {isReorderMode && (
+        <div className="px-4 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-blue-800 dark:text-blue-300 text-xs flex items-center justify-between animate-in fade-in duration-100">
+          <div className="flex items-center gap-2">
+            <GripVertical className="w-4 h-4" />
+            <span>Reorder Mode: Drag cards or use the arrow buttons to arrange drivers in your preferred order.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsReorderMode(false)}
+            className="font-bold underline hover:no-underline cursor-pointer"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
       {/* Drivers Grid */}
       {filteredDrivers.length === 0 ? (
         <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-12 text-center">
@@ -394,14 +501,46 @@ export function DriverManager() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredDrivers.map((driver) => {
+          {filteredDrivers.map((driver, index) => {
             const monthlyStats = calculateDriverMonthlyStats(driver, bills);
             const totalStats = calculateDriverTotalStats(driver, bills);
 
             return (
               <div
                 key={driver.id}
-                className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs hover:border-gray-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between relative group"
+                draggable={true}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', driver.id);
+                  setDraggedCardId(driver.id);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedCardId && draggedCardId !== driver.id) {
+                    setDragOverCardId(driver.id);
+                  }
+                }}
+                onDragLeave={() => {
+                  if (dragOverCardId === driver.id) {
+                    setDragOverCardId(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const sourceId = e.dataTransfer.getData('text/plain') || draggedCardId;
+                  const targetId = driver.id;
+                  if (sourceId && targetId && sourceId !== targetId) {
+                    handleReorderCards(sourceId, targetId);
+                  }
+                  setDraggedCardId(null);
+                  setDragOverCardId(null);
+                }}
+                className={`bg-white dark:bg-zinc-900 border rounded-2xl p-5 shadow-xs transition-all flex flex-col justify-between relative group ${
+                  draggedCardId === driver.id
+                    ? 'opacity-40 border-blue-400 scale-[0.99]'
+                    : dragOverCardId === driver.id
+                    ? 'border-blue-500 ring-2 ring-blue-500/40 scale-[1.01]'
+                    : 'border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700'
+                }`}
               >
                 {/* Top Section: Driver Name, Rate, and 3-Dot Menu */}
                 <div className="flex items-center justify-between">
@@ -411,8 +550,11 @@ export function DriverManager() {
                       Driver Name
                     </span>
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-                        <User className="w-4 h-4" />
+                      <div className="flex items-center gap-1 shrink-0" title="Drag to reorder card">
+                        <GripVertical className="w-4 h-4 text-gray-300 group-hover:text-gray-500 dark:text-zinc-600 dark:group-hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0" />
+                        <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                          <User className="w-4 h-4" />
+                        </div>
                       </div>
                       <div>
                         <h3 className="text-base font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight">
@@ -440,59 +582,123 @@ export function DriverManager() {
                     </p>
                   </div>
 
-                  {/* 3. 3-Dot Menu Options */}
-                  <div className="relative driver-action-menu shrink-0">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveMenuId(activeMenuId === driver.id ? null : driver.id);
-                      }}
-                      title="Driver Operations"
-                      className="w-9 h-9 rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-800/80 hover:bg-gray-100 dark:hover:bg-zinc-700/80 text-gray-700 dark:text-zinc-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
-                    >
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
-
-                    {/* Dropdown Menu */}
-                    {activeMenuId === driver.id && (
-                      <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-30 p-1.5 space-y-0.5 animate-in fade-in-50 zoom-in-95 duration-100">
-                        {/* Edit Driver Option */}
+                  {/* 3. Action Menu & Quick Reorder Controls */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isReorderMode && (
+                      <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-zinc-800 p-1 rounded-xl border border-gray-200 dark:border-zinc-700">
                         <button
                           type="button"
-                          onClick={() => handleOpenEditModal(driver)}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          <span>Edit Driver & Rate</span>
-                        </button>
-
-                        {/* Quick Update Rate Option */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenQuickRate(driver)}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
-                        >
-                          <Gauge className="w-3.5 h-3.5" />
-                          <span>Quick Change Rate</span>
-                        </button>
-
-                        <div className="border-t border-gray-100 dark:border-zinc-800 my-1" />
-
-                        {/* Delete Option */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeletingDriver(driver);
-                            setActiveMenuId(null);
+                          disabled={index === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveCard(driver.id, 'up');
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg transition-colors cursor-pointer text-left"
+                          title="Move earlier (left / up)"
+                          className="p-1 rounded-lg text-gray-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Delete Driver</span>
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="text-[10px] font-mono font-bold text-gray-500 dark:text-zinc-400 px-1">
+                          {index + 1}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={index === filteredDrivers.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveCard(driver.id, 'down');
+                          }}
+                          title="Move later (right / down)"
+                          className="p-1 rounded-lg text-gray-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     )}
+
+                    <div className="relative driver-action-menu shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuId(activeMenuId === driver.id ? null : driver.id);
+                        }}
+                        title="Driver Operations"
+                        className="w-9 h-9 rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-800/80 hover:bg-gray-100 dark:hover:bg-zinc-700/80 text-gray-700 dark:text-zinc-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {activeMenuId === driver.id && (
+                        <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-30 p-1.5 space-y-0.5 animate-in fade-in-50 zoom-in-95 duration-100">
+                          {/* Edit Driver Option */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(driver)}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <span>Edit Driver & Rate</span>
+                          </button>
+
+                          {/* Quick Update Rate Option */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenQuickRate(driver)}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer text-left"
+                          >
+                            <Gauge className="w-3.5 h-3.5" />
+                            <span>Quick Change Rate</span>
+                          </button>
+
+                          {/* Reorder Card Position */}
+                          <div className="pt-1 mt-1 border-t border-gray-100 dark:border-zinc-800">
+                            <button
+                              type="button"
+                              disabled={index === 0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveCard(driver.id, 'up');
+                                setActiveMenuId(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Move Earlier (Left / Up)</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={index === filteredDrivers.length - 1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveCard(driver.id, 'down');
+                                setActiveMenuId(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Move Later (Right / Down)</span>
+                            </button>
+                          </div>
+
+                          <div className="border-t border-gray-100 dark:border-zinc-800 my-1" />
+
+                          {/* Delete Option */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeletingDriver(driver);
+                              setActiveMenuId(null);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg transition-colors cursor-pointer text-left"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete Driver</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 

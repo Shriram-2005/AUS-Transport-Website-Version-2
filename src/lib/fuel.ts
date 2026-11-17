@@ -243,7 +243,11 @@ export function filterFuelEntries(
       return false;
     }
     return true;
-  }).sort((a, b) => parseDateToTimestamp(b.date) - parseDateToTimestamp(a.date));
+  }).sort((a, b) => {
+    const diff = parseDateToTimestamp(b.date) - parseDateToTimestamp(a.date);
+    if (diff !== 0) return diff;
+    return (parseDateToTimestamp(b.createdAt) || 0) - (parseDateToTimestamp(a.createdAt) || 0);
+  });
 }
 
 /**
