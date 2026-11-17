@@ -48,6 +48,7 @@ import {
   getStoredCardOrder,
   CARD_ORDER_CHANGE_EVENT,
 } from '@/lib/cardOrder';
+import { CustomKpiCards } from './CustomKpiSection';
 
 export function DriverManager() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -493,7 +494,7 @@ export function DriverManager() {
       </div>
 
       {/* KPI Stats Overview */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
         <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
           <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
             <span className="text-[11px] uppercase font-bold tracking-wider">Total Drivers</span>
@@ -561,6 +562,9 @@ export function DriverManager() {
             </p>
           </div>
         </div>
+
+        {/* Custom KPI Cards for Drivers */}
+        <CustomKpiCards category="drivers" />
       </div>
 
       {/* Reordering Instructions Banner */}

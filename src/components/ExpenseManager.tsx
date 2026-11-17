@@ -24,7 +24,10 @@ import {
   ChevronRight,
   ArrowUp,
   ArrowDown,
+  Calendar,
+  TrendingUp,
 } from 'lucide-react';
+import { CustomKpiCards } from './CustomKpiSection';
 import { createClient } from '@/lib/supabase/client';
 import {
   ExpenseEntry,
@@ -742,26 +745,55 @@ export function ExpenseManager() {
   // Fleet Expenses KPIs
   const expenseKpis = useMemo(() => {
     let totalAmount = 0;
-    let tollAmount = 0;
-    let operatingAmount = 0;
+    let thisMonthTotal = 0;
+    const categoryTotals: Record<string, number> = {};
+
+    const now = new Date();
+    const currentMonthNum = String(now.getMonth() + 1).padStart(2, '0');
+    const currentYear = String(now.getFullYear());
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const currentMonthName = `${monthNames[now.getMonth()]} ${currentYear}`;
 
     expenses.forEach((e) => {
       const amt = Number(e.amount) || 0;
       totalAmount += amt;
-      const cat = (e.category || '').toLowerCase();
-      if (cat.includes('toll')) {
-        tollAmount += amt;
-      } else {
-        operatingAmount += amt;
+
+      const cat = (e.category || 'Other').trim();
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
+
+      if (e.date) {
+        const parts = e.date.split('-');
+        if (parts.length === 3) {
+          const isMatch =
+            (parts[1] === currentMonthNum && parts[2] === currentYear) ||
+            (parts[0] === currentYear && parts[1] === currentMonthNum);
+          if (isMatch) {
+            thisMonthTotal += amt;
+          }
+        }
       }
     });
 
-    const uniqueCategories = new Set(expenses.map((e) => e.category).filter(Boolean)).size;
+    let topCategoryName = 'None';
+    let topCategoryAmount = 0;
+    Object.entries(categoryTotals).forEach(([cat, sum]) => {
+      if (sum > topCategoryAmount) {
+        topCategoryAmount = sum;
+        topCategoryName = cat;
+      }
+    });
+
+    const uniqueCategories = Object.keys(categoryTotals).length;
 
     return {
       totalAmount,
-      tollAmount,
-      operatingAmount,
+      thisMonthTotal,
+      currentMonthName,
+      topCategoryName,
+      topCategoryAmount,
       totalEntries: expenses.length,
       categoryCount: uniqueCategories,
     };
@@ -844,10 +876,10 @@ export function ExpenseManager() {
       </div>
 
       {/* KPI Stats Overview */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
         <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
           <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Total Fleet Expenses</span>
+            <span className="text-[11px] uppercase font-bold tracking-wider">Total Expenses</span>
             <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
               <Wallet className="w-4 h-4" />
             </div>
@@ -864,34 +896,34 @@ export function ExpenseManager() {
 
         <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
           <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Operating Expenses</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <CreditCard className="w-4 h-4" />
+            <span className="text-[11px] uppercase font-bold tracking-wider">This Month Spend</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <Calendar className="w-4 h-4" />
             </div>
           </div>
           <div>
             <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              Rs.{Math.round(expenseKpis.operatingAmount).toLocaleString('en-IN')}
+              Rs.{Math.round(expenseKpis.thisMonthTotal).toLocaleString('en-IN')}
             </h3>
             <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Taxes, insurance, batas & yard (Excl. Toll)
+              {expenseKpis.currentMonthName} expenses
             </p>
           </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
           <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Toll Expenses</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
-              <Receipt className="w-4 h-4" />
+            <span className="text-[11px] uppercase font-bold tracking-wider truncate pr-1">Top Category</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+              <TrendingUp className="w-4 h-4" />
             </div>
           </div>
           <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              Rs.{Math.round(expenseKpis.tollAmount).toLocaleString('en-IN')}
+            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight truncate">
+              {expenseKpis.topCategoryName}
             </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Reimbursed tolls (Excluded from P&L)
+            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5 truncate">
+              Rs.{Math.round(expenseKpis.topCategoryAmount).toLocaleString('en-IN')} spend
             </p>
           </div>
         </div>
@@ -908,10 +940,13 @@ export function ExpenseManager() {
               {expenseKpis.totalEntries} {expenseKpis.totalEntries === 1 ? 'Voucher' : 'Vouchers'}
             </h3>
             <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Across {expenseKpis.categoryCount} active categories
+              Across {expenseKpis.categoryCount} categories
             </p>
           </div>
         </div>
+
+        {/* Custom KPI Cards for Expenses */}
+        <CustomKpiCards category="expenses" />
       </div>
 
       {/* Reordering Instructions Banner */}

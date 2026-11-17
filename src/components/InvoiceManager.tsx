@@ -50,6 +50,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { CustomDatePicker } from './CustomDatePicker';
+import { CustomKpiCards } from './CustomKpiSection';
 import { getStoredVehicles, saveStoredVehicles, updateVehicleKmFromBill, VEHICLES_CHANGE_EVENT, Vehicle } from '@/lib/vehicles';
 import { getStoredDrivers, saveStoredDrivers, DRIVERS_CHANGE_EVENT, Driver } from '@/lib/drivers';
 import { initializeIndianPlaces, searchIndianPlaces, IndianPlace } from '@/lib/indianPlaces';
@@ -3109,6 +3110,9 @@ export function InvoiceManager() {
                 </span>
               </div>
             </div>
+
+            {/* Custom KPI Cards for Invoices */}
+            <CustomKpiCards category="invoices" />
           </div>
 
           {/* SEARCH & EXTENSIVE FILTERS BAR */}

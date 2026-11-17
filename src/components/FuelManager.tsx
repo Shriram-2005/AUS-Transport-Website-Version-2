@@ -48,6 +48,7 @@ import {
 } from '@/lib/fuel';
 import { Vehicle, getStoredVehicles, VEHICLES_CHANGE_EVENT } from '@/lib/vehicles';
 import { CustomDatePicker } from './CustomDatePicker';
+import { CustomKpiCards } from './CustomKpiSection';
 import { REFRESH_MODULE_EVENT } from '@/lib/headerEvents';
 import {
   applyCardOrder,
@@ -802,16 +803,44 @@ export function FuelManager() {
   const fuelKpis = useMemo(() => {
     const summary = calculateFuelSummary(fuelEntries);
     const uniqueVehiclesFueled = new Set(fuelEntries.map((e) => e.vehicleNumber).filter(Boolean)).size;
-    const bunkCount = bunkList.length;
+
+    let thisMonthAmount = 0;
+    let thisMonthLiters = 0;
+    const now = new Date();
+    const currentMonthNum = String(now.getMonth() + 1).padStart(2, '0');
+    const currentYear = String(now.getFullYear());
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const currentMonthName = `${monthNames[now.getMonth()]} ${currentYear}`;
+
+    fuelEntries.forEach((e) => {
+      if (e.date) {
+        const parts = e.date.split('-');
+        if (parts.length === 3) {
+          const isMatch =
+            (parts[1] === currentMonthNum && parts[2] === currentYear) ||
+            (parts[0] === currentYear && parts[1] === currentMonthNum);
+          if (isMatch) {
+            thisMonthAmount += Number(e.totalAmount) || 0;
+            thisMonthLiters += Number(e.liters) || 0;
+          }
+        }
+      }
+    });
+
     return {
       totalAmount: summary.totalAmount,
       totalLiters: summary.totalLiters,
       averageRate: summary.averageRate,
       entryCount: summary.entryCount,
       uniqueVehiclesFueled,
-      bunkCount,
+      thisMonthAmount,
+      thisMonthLiters,
+      currentMonthName,
     };
-  }, [fuelEntries, bunkList]);
+  }, [fuelEntries]);
 
   return (
     <div className="space-y-6">
@@ -890,7 +919,7 @@ export function FuelManager() {
       </div>
 
       {/* KPI Stats Overview */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
         <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
           <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
             <span className="text-[11px] uppercase font-bold tracking-wider">Total Fuel Expense</span>
@@ -944,20 +973,23 @@ export function FuelManager() {
 
         <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
           <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Partner Bunks</span>
+            <span className="text-[11px] uppercase font-bold tracking-wider">This Month Fuel</span>
             <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900 flex items-center justify-center text-purple-600 dark:text-purple-400">
-              <Building2 className="w-4 h-4" />
+              <Calendar className="w-4 h-4" />
             </div>
           </div>
           <div>
             <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              {fuelKpis.bunkCount} {fuelKpis.bunkCount === 1 ? 'Bunk' : 'Bunks'}
+              Rs.{Math.round(fuelKpis.thisMonthAmount).toLocaleString('en-IN')}
             </h3>
             <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              {fuelKpis.entryCount} total logged receipts
+              {fuelKpis.thisMonthLiters.toFixed(2)} L in {fuelKpis.currentMonthName}
             </p>
           </div>
         </div>
+
+        {/* Custom KPI Cards for Fuel */}
+        <CustomKpiCards category="fuel" />
       </div>
 
       {/* Reordering Instructions Banner */}
