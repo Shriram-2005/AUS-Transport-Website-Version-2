@@ -27,7 +27,8 @@ import {
   Calendar,
   TrendingUp,
 } from 'lucide-react';
-import { CustomKpiCards } from './CustomKpiSection';
+import { KpiDashboardBar } from './KpiDashboardBar';
+import { KpiCardDefinition } from '@/lib/kpiManager';
 import { createClient } from '@/lib/supabase/client';
 import {
   ExpenseEntry,
@@ -742,10 +743,17 @@ export function ExpenseManager() {
     }, 400);
   };
 
-  // Fleet Expenses KPIs
-  const expenseKpis = useMemo(() => {
+  // Pure Database KPI Cards for Expenses
+  const expenseCards = useMemo<KpiCardDefinition[]>(() => {
     let totalAmount = 0;
     let thisMonthTotal = 0;
+    let operatingAmount = 0;
+    let tollAmount = 0;
+    let tollCount = 0;
+    let cashAmount = 0;
+    let cashCount = 0;
+    let digitalAmount = 0;
+    let digitalCount = 0;
     const categoryTotals: Record<string, number> = {};
 
     const now = new Date();
@@ -763,6 +771,23 @@ export function ExpenseManager() {
 
       const cat = (e.category || 'Other').trim();
       categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
+
+      const isToll = cat.toLowerCase().includes('toll');
+      if (isToll) {
+        tollAmount += amt;
+        tollCount += 1;
+      } else {
+        operatingAmount += amt;
+      }
+
+      const pMode = (e.paymentMode || '').toLowerCase();
+      if (pMode === 'cash') {
+        cashAmount += amt;
+        cashCount += 1;
+      } else if (pMode.includes('upi') || pMode.includes('bank') || pMode.includes('card') || pMode.includes('cheque') || pMode.includes('online')) {
+        digitalAmount += amt;
+        digitalCount += 1;
+      }
 
       if (e.date) {
         const parts = e.date.split('-');
@@ -788,16 +813,83 @@ export function ExpenseManager() {
 
     const uniqueCategories = Object.keys(categoryTotals).length;
 
-    return {
-      totalAmount,
-      thisMonthTotal,
-      currentMonthName,
-      topCategoryName,
-      topCategoryAmount,
-      totalEntries: expenses.length,
-      categoryCount: uniqueCategories,
-    };
+    return [
+      {
+        key: 'total_expenses',
+        title: 'Total Expenses',
+        value: `Rs.${Math.round(totalAmount).toLocaleString('en-IN')}`,
+        subtitle: `Across ${expenses.length} logged vouchers`,
+        icon: 'wallet',
+        color: 'indigo',
+        description: 'Total spend across all expense vouchers',
+      },
+      {
+        key: 'this_month_spend',
+        title: 'This Month Spend',
+        value: `Rs.${Math.round(thisMonthTotal).toLocaleString('en-IN')}`,
+        subtitle: `${currentMonthName} expenses`,
+        icon: 'calendar',
+        color: 'emerald',
+        description: 'Expenses recorded in current calendar month',
+      },
+      {
+        key: 'top_category',
+        title: 'Top Category',
+        value: topCategoryName,
+        subtitle: `Rs.${Math.round(topCategoryAmount).toLocaleString('en-IN')} spend`,
+        icon: 'trending',
+        color: 'blue',
+        description: 'Expense category with highest cumulative spend',
+      },
+      {
+        key: 'voucher_count',
+        title: 'Expense Vouchers',
+        value: `${expenses.length} ${expenses.length === 1 ? 'Voucher' : 'Vouchers'}`,
+        subtitle: `Across ${uniqueCategories} categories`,
+        icon: 'building',
+        color: 'purple',
+        description: 'Total number of vouchers recorded',
+      },
+      {
+        key: 'operating_spend',
+        title: 'Operating Spend',
+        value: `Rs.${Math.round(operatingAmount).toLocaleString('en-IN')}`,
+        subtitle: 'Spend excluding toll expenses',
+        icon: 'activity',
+        color: 'amber',
+        description: 'Operating expenditure excluding toll charges',
+      },
+      {
+        key: 'toll_spend',
+        title: 'Toll Expenses',
+        value: `Rs.${Math.round(tollAmount).toLocaleString('en-IN')}`,
+        subtitle: `${tollCount} toll vouchers logged`,
+        icon: 'truck',
+        color: 'rose',
+        description: 'Cumulative toll and fastag expenses',
+      },
+      {
+        key: 'cash_spend',
+        title: 'Cash Outflow',
+        value: `Rs.${Math.round(cashAmount).toLocaleString('en-IN')}`,
+        subtitle: `${cashCount} cash payments`,
+        icon: 'creditCard',
+        color: 'cyan',
+        description: 'Expenses settled via cash payment',
+      },
+      {
+        key: 'digital_spend',
+        title: 'Digital / Bank Pay',
+        value: `Rs.${Math.round(digitalAmount).toLocaleString('en-IN')}`,
+        subtitle: `${digitalCount} online / bank payments`,
+        icon: 'receipt',
+        color: 'slate',
+        description: 'Expenses settled via UPI, NetBanking, or Cheque',
+      },
+    ];
   }, [expenses]);
+
+  const defaultExpenseKeys = ['total_expenses', 'this_month_spend', 'top_category', 'voucher_count'];
 
   return (
     <div className="space-y-6">
@@ -875,79 +967,12 @@ export function ExpenseManager() {
         </div>
       </div>
 
-      {/* KPI Stats Overview */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Total Expenses</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-              <Wallet className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              Rs.{Math.round(expenseKpis.totalAmount).toLocaleString('en-IN')}
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Across {expenseKpis.totalEntries} logged vouchers
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">This Month Spend</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              <Calendar className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              Rs.{Math.round(expenseKpis.thisMonthTotal).toLocaleString('en-IN')}
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              {expenseKpis.currentMonthName} expenses
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider truncate pr-1">Top Category</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight truncate">
-              {expenseKpis.topCategoryName}
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5 truncate">
-              Rs.{Math.round(expenseKpis.topCategoryAmount).toLocaleString('en-IN')} spend
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Expense Vouchers</span>
-            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900 flex items-center justify-center text-purple-600 dark:text-purple-400">
-              <Building2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              {expenseKpis.totalEntries} {expenseKpis.totalEntries === 1 ? 'Voucher' : 'Vouchers'}
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Across {expenseKpis.categoryCount} categories
-            </p>
-          </div>
-        </div>
-
-        {/* Custom KPI Cards for Expenses */}
-        <CustomKpiCards category="expenses" />
-      </div>
+      {/* Pure Database-Backed Dynamic KPI Dashboard Bar */}
+      <KpiDashboardBar
+        category="expenses"
+        availableCards={expenseCards}
+        defaultKeys={defaultExpenseKeys}
+      />
 
       {/* Reordering Instructions Banner */}
       {isReorderMode && (

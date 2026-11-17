@@ -48,7 +48,8 @@ import {
 } from '@/lib/fuel';
 import { Vehicle, getStoredVehicles, VEHICLES_CHANGE_EVENT } from '@/lib/vehicles';
 import { CustomDatePicker } from './CustomDatePicker';
-import { CustomKpiCards } from './CustomKpiSection';
+import { KpiDashboardBar } from './KpiDashboardBar';
+import { KpiCardDefinition } from '@/lib/kpiManager';
 import { REFRESH_MODULE_EVENT } from '@/lib/headerEvents';
 import {
   applyCardOrder,
@@ -799,13 +800,17 @@ export function FuelManager() {
     }, 400);
   };
 
-  // Fleet Fuel KPIs
-  const fuelKpis = useMemo(() => {
+  // Pure Database KPI Cards for Fuel Management
+  const fuelCards = useMemo<KpiCardDefinition[]>(() => {
     const summary = calculateFuelSummary(fuelEntries);
     const uniqueVehiclesFueled = new Set(fuelEntries.map((e) => e.vehicleNumber).filter(Boolean)).size;
 
     let thisMonthAmount = 0;
     let thisMonthLiters = 0;
+    let dieselLiters = 0;
+    let dieselAmount = 0;
+    const vehicleSpendMap: Record<string, number> = {};
+
     const now = new Date();
     const currentMonthNum = String(now.getMonth() + 1).padStart(2, '0');
     const currentYear = String(now.getFullYear());
@@ -816,6 +821,19 @@ export function FuelManager() {
     const currentMonthName = `${monthNames[now.getMonth()]} ${currentYear}`;
 
     fuelEntries.forEach((e) => {
+      const amount = Number(e.totalAmount) || 0;
+      const liters = Number(e.liters) || 0;
+
+      if (e.particulars === 'Diesel') {
+        dieselLiters += liters;
+        dieselAmount += amount;
+      }
+
+      if (e.vehicleNumber) {
+        const vReg = e.vehicleNumber.trim().toUpperCase();
+        vehicleSpendMap[vReg] = (vehicleSpendMap[vReg] || 0) + amount;
+      }
+
       if (e.date) {
         const parts = e.date.split('-');
         if (parts.length === 3) {
@@ -823,24 +841,99 @@ export function FuelManager() {
             (parts[1] === currentMonthNum && parts[2] === currentYear) ||
             (parts[0] === currentYear && parts[1] === currentMonthNum);
           if (isMatch) {
-            thisMonthAmount += Number(e.totalAmount) || 0;
-            thisMonthLiters += Number(e.liters) || 0;
+            thisMonthAmount += amount;
+            thisMonthLiters += liters;
           }
         }
       }
     });
 
-    return {
-      totalAmount: summary.totalAmount,
-      totalLiters: summary.totalLiters,
-      averageRate: summary.averageRate,
-      entryCount: summary.entryCount,
-      uniqueVehiclesFueled,
-      thisMonthAmount,
-      thisMonthLiters,
-      currentMonthName,
-    };
+    let topVehicleFuelReg = '';
+    let topVehicleFuelSpend = 0;
+    Object.entries(vehicleSpendMap).forEach(([reg, spend]) => {
+      if (spend > topVehicleFuelSpend) {
+        topVehicleFuelSpend = spend;
+        topVehicleFuelReg = reg;
+      }
+    });
+
+    return [
+      {
+        key: 'total_fuel_expense',
+        title: 'Total Fuel Expense',
+        value: `Rs.${Math.round(summary.totalAmount).toLocaleString('en-IN')}`,
+        subtitle: `Across ${summary.entryCount} logged fuel receipts`,
+        icon: 'fuel',
+        color: 'amber',
+        description: 'Total spend across all fuel receipts',
+      },
+      {
+        key: 'total_liters',
+        title: 'Fuel Dispensed',
+        value: `${summary.totalLiters.toFixed(2)} L`,
+        subtitle: `Supplied to ${uniqueVehiclesFueled} fleet vehicles`,
+        icon: 'droplets',
+        color: 'blue',
+        description: 'Total volume of fuel filled across all vehicles',
+      },
+      {
+        key: 'avg_fuel_rate',
+        title: 'Avg Fuel Rate',
+        value: `Rs.${summary.averageRate.toFixed(2)} / L`,
+        subtitle: 'Weighted fleet average rate',
+        icon: 'percent',
+        color: 'emerald',
+        description: 'Overall weighted average fuel price per liter',
+      },
+      {
+        key: 'this_month_fuel',
+        title: 'This Month Fuel',
+        value: `Rs.${Math.round(thisMonthAmount).toLocaleString('en-IN')}`,
+        subtitle: `${thisMonthLiters.toFixed(2)} L in ${currentMonthName}`,
+        icon: 'calendar',
+        color: 'purple',
+        description: 'Fuel expenditure logged in current calendar month',
+      },
+      {
+        key: 'receipt_count',
+        title: 'Total Fuel Receipts',
+        value: `${summary.entryCount} Receipts`,
+        subtitle: 'Logged across all bunks',
+        icon: 'receipt',
+        color: 'indigo',
+        description: 'Total number of individual fuel fill slips',
+      },
+      {
+        key: 'vehicles_fueled',
+        title: 'Vehicles Fueled',
+        value: `${uniqueVehiclesFueled} Vehicles`,
+        subtitle: 'Active fleet units with fuel bills',
+        icon: 'truck',
+        color: 'cyan',
+        description: 'Distinct fleet vehicles with fuel records',
+      },
+      {
+        key: 'diesel_liters',
+        title: 'Diesel Volume',
+        value: `${dieselLiters.toFixed(2)} L`,
+        subtitle: `Rs.${Math.round(dieselAmount).toLocaleString('en-IN')} spend`,
+        icon: 'fuel',
+        color: 'rose',
+        description: 'Total diesel volume consumed across fleet',
+      },
+      {
+        key: 'top_fuel_vehicle',
+        title: 'Top Fuel Consumer',
+        value: topVehicleFuelReg || 'None',
+        subtitle: topVehicleFuelSpend > 0 ? `Rs.${Math.round(topVehicleFuelSpend).toLocaleString('en-IN')} spend` : 'No fuel entries',
+        icon: 'award',
+        color: 'slate',
+        description: 'Vehicle with highest cumulative fuel expense',
+      },
+    ];
   }, [fuelEntries]);
+
+  const defaultFuelKeys = ['total_fuel_expense', 'total_liters', 'avg_fuel_rate', 'this_month_fuel'];
 
   return (
     <div className="space-y-6">
@@ -918,79 +1011,12 @@ export function FuelManager() {
         </div>
       </div>
 
-      {/* KPI Stats Overview */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Total Fuel Expense</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
-              <Fuel className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              Rs.{Math.round(fuelKpis.totalAmount).toLocaleString('en-IN')}
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Across {fuelKpis.entryCount} logged fuel receipts
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Fuel Dispensed</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <Droplets className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              {fuelKpis.totalLiters.toFixed(2)} L
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Supplied to {fuelKpis.uniqueVehiclesFueled} fleet vehicles
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Avg Fuel Rate</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              <Truck className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              Rs.{fuelKpis.averageRate.toFixed(2)} / L
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Weighted fleet average rate
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">This Month Fuel</span>
-            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900 flex items-center justify-center text-purple-600 dark:text-purple-400">
-              <Calendar className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              Rs.{Math.round(fuelKpis.thisMonthAmount).toLocaleString('en-IN')}
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              {fuelKpis.thisMonthLiters.toFixed(2)} L in {fuelKpis.currentMonthName}
-            </p>
-          </div>
-        </div>
-
-        {/* Custom KPI Cards for Fuel */}
-        <CustomKpiCards category="fuel" />
-      </div>
+      {/* Pure Database-Backed Dynamic KPI Dashboard Bar */}
+      <KpiDashboardBar
+        category="fuel"
+        availableCards={fuelCards}
+        defaultKeys={defaultFuelKeys}
+      />
 
       {/* Reordering Instructions Banner */}
       {isReorderMode && (

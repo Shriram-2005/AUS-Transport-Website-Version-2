@@ -50,7 +50,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { CustomDatePicker } from './CustomDatePicker';
-import { CustomKpiCards } from './CustomKpiSection';
+import { KpiDashboardBar } from './KpiDashboardBar';
+import { KpiCardDefinition } from '@/lib/kpiManager';
 import { getStoredVehicles, saveStoredVehicles, updateVehicleKmFromBill, VEHICLES_CHANGE_EVENT, Vehicle } from '@/lib/vehicles';
 import { getStoredDrivers, saveStoredDrivers, DRIVERS_CHANGE_EVENT, Driver } from '@/lib/drivers';
 import { initializeIndianPlaces, searchIndianPlaces, IndianPlace } from '@/lib/indianPlaces';
@@ -64,6 +65,7 @@ import {
   getBillTdsRate,
   calculateBillReceivable,
   calculateBillGrossTotal,
+  parseMonthFromDate,
 } from '@/lib/invoices';
 import {
   TRIGGER_MANUAL_SAVE_EVENT,
@@ -1092,6 +1094,123 @@ export function InvoiceManager() {
 
     return { totalBills, received, pending, totalReceivable, totalGross, paidCount, pendingCount, totalTrips, totalKm };
   }, [bills]);
+
+  // Pure Database KPI Cards for Invoices
+  const invoiceCards = useMemo<KpiCardDefinition[]>(() => {
+    let thisMonthGross = 0;
+    let thisMonthBillCount = 0;
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    bills.forEach((b) => {
+      const parsedMonth = parseMonthFromDate(b.date);
+      if (parsedMonth?.key === currentMonthKey) {
+        thisMonthGross += calculateBillGrossTotal(b);
+        thisMonthBillCount += 1;
+      }
+    });
+
+    const collectionRate =
+      stats.totalReceivable > 0
+        ? Math.round((stats.received / stats.totalReceivable) * 100)
+        : 0;
+
+    const avgBillGross =
+      bills.length > 0 ? Math.round(stats.totalGross / bills.length) : 0;
+
+    return [
+      {
+        key: 'net_receivable',
+        title: 'Net Receivable',
+        value: `₹ ${Math.round(stats.totalReceivable).toLocaleString('en-IN')}`,
+        subtitle: 'After TDS cut (Revenue)',
+        icon: 'receipt',
+        color: 'blue',
+        description: 'Net receivable amount after TDS deduction considered as revenue',
+      },
+      {
+        key: 'gross_invoiced',
+        title: 'Gross Invoiced',
+        value: `₹ ${Math.round(stats.totalGross).toLocaleString('en-IN')}`,
+        subtitle: 'Pre-tax billing total',
+        icon: 'fileText',
+        color: 'purple',
+        description: 'Total cumulative gross invoiced across all bills',
+      },
+      {
+        key: 'received_paid',
+        title: 'Received (Paid)',
+        value: `₹ ${Math.round(stats.received).toLocaleString('en-IN')}`,
+        subtitle: `${stats.paidCount} of ${stats.totalBills} bills cleared`,
+        icon: 'check',
+        color: 'emerald',
+        description: 'Cleared and collected receivables',
+      },
+      {
+        key: 'pending_unpaid',
+        title: 'Pending (Unpaid)',
+        value: `₹ ${Math.round(stats.pending).toLocaleString('en-IN')}`,
+        subtitle: `${stats.pendingCount} bills outstanding`,
+        icon: 'clock',
+        color: 'amber',
+        description: 'Unpaid outstanding bills awaiting payment',
+      },
+      {
+        key: 'total_bills',
+        title: 'Total Bills',
+        value: `${bills.length} Bills`,
+        subtitle: `${filteredBills.length} in current view`,
+        icon: 'percent',
+        color: 'slate',
+        description: 'Total bills generated in system',
+      },
+      {
+        key: 'total_distance',
+        title: 'Fleet Trips & KM',
+        value: `${stats.totalKm.toLocaleString('en-IN')} KM`,
+        subtitle: `${stats.totalTrips} completed trips`,
+        icon: 'truck',
+        color: 'indigo',
+        description: 'Cumulative kilometers and completed freight trips',
+      },
+      {
+        key: 'this_month_invoiced',
+        title: 'This Month Billed',
+        value: `₹ ${Math.round(thisMonthGross).toLocaleString('en-IN')}`,
+        subtitle: `${thisMonthBillCount} bills in current month`,
+        icon: 'calendar',
+        color: 'cyan',
+        description: 'Gross billing invoiced in current calendar month',
+      },
+      {
+        key: 'collection_rate',
+        title: 'Collection Rate',
+        value: `${collectionRate}%`,
+        subtitle: `₹ ${Math.round(stats.received).toLocaleString('en-IN')} collected`,
+        icon: 'trending',
+        color: 'emerald',
+        description: 'Percentage of invoiced revenue successfully cleared',
+      },
+      {
+        key: 'avg_bill_amount',
+        title: 'Avg Bill Amount',
+        value: `₹ ${avgBillGross.toLocaleString('en-IN')}`,
+        subtitle: 'Average gross bill value',
+        icon: 'wallet',
+        color: 'rose',
+        description: 'Average billing amount per freight invoice',
+      },
+    ];
+  }, [bills, filteredBills.length, stats]);
+
+  const defaultInvoiceKeys = [
+    'net_receivable',
+    'gross_invoiced',
+    'received_paid',
+    'pending_unpaid',
+    'total_bills',
+    'total_distance',
+  ];
 
   // Distinct vehicles for dropdown
   const vehicleOptions = useMemo(() => {
@@ -3001,119 +3120,12 @@ export function InvoiceManager() {
             </button>
           </div>
 
-          {/* STATS SUMMARY CARDS */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {/* 1. Net Receivable (Revenue) */}
-            <div className="p-3.5 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20 shadow-xs space-y-1.5 hover:border-blue-300 dark:hover:border-blue-800 transition-all">
-              <div className="flex items-center justify-between text-blue-700 dark:text-blue-300">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Net Receivable</span>
-                <div className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-900/60 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                  <Receipt className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div>
-                <span className="text-lg font-black font-mono text-blue-900 dark:text-blue-100 block tracking-tight">
-                  ₹ {Math.round(stats.totalReceivable).toLocaleString('en-IN')}
-                </span>
-                <span className="text-[10px] font-medium text-blue-600/80 dark:text-blue-400/80 block mt-0.5">
-                  After TDS cut (Revenue)
-                </span>
-              </div>
-            </div>
-
-            {/* 2. Total Gross Invoiced */}
-            <div className="p-3.5 rounded-2xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/40 dark:bg-purple-950/20 shadow-xs space-y-1.5 hover:border-purple-300 dark:hover:border-purple-800 transition-all">
-              <div className="flex items-center justify-between text-purple-700 dark:text-purple-300">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Gross Invoiced</span>
-                <div className="w-6 h-6 rounded-lg bg-purple-100 dark:bg-purple-900/60 flex items-center justify-center text-purple-600 dark:text-purple-400">
-                  <FileText className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div>
-                <span className="text-lg font-black font-mono text-purple-900 dark:text-purple-100 block tracking-tight">
-                  ₹ {Math.round(stats.totalGross).toLocaleString('en-IN')}
-                </span>
-                <span className="text-[10px] font-medium text-purple-600/80 dark:text-purple-400/80 block mt-0.5">
-                  Pre-tax billing total
-                </span>
-              </div>
-            </div>
-
-            {/* 3. Received (Paid) */}
-            <div className="p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-950/60 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-xs space-y-1.5 hover:border-emerald-300 dark:hover:border-emerald-800 transition-all">
-              <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-400">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Received (Paid)</span>
-                <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div>
-                <span className="text-lg font-black font-mono text-emerald-800 dark:text-emerald-200 block tracking-tight">
-                  ₹ {Math.round(stats.received).toLocaleString('en-IN')}
-                </span>
-                <span className="text-[10px] font-medium text-emerald-600/80 dark:text-emerald-400/80 block mt-0.5">
-                  {stats.paidCount} of {stats.totalBills} bills cleared
-                </span>
-              </div>
-            </div>
-
-            {/* 4. Pending (Unpaid) */}
-            <div className="p-3.5 rounded-2xl border border-amber-200 dark:border-amber-950/60 bg-amber-50/40 dark:bg-amber-950/20 shadow-xs space-y-1.5 hover:border-amber-300 dark:hover:border-amber-800 transition-all">
-              <div className="flex items-center justify-between text-amber-700 dark:text-amber-400">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Pending (Unpaid)</span>
-                <div className="w-6 h-6 rounded-lg bg-amber-100 dark:bg-amber-900/60 flex items-center justify-center text-amber-600 dark:text-amber-400">
-                  <Clock className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div>
-                <span className="text-lg font-black font-mono text-amber-800 dark:text-amber-200 block tracking-tight">
-                  ₹ {Math.round(stats.pending).toLocaleString('en-IN')}
-                </span>
-                <span className="text-[10px] font-medium text-amber-600/80 dark:text-amber-400/80 block mt-0.5">
-                  {stats.pendingCount} bills outstanding
-                </span>
-              </div>
-            </div>
-
-            {/* 5. Total Invoiced Bills */}
-            <div className="p-3.5 rounded-2xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 shadow-xs space-y-1.5 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-              <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Total Bills</span>
-                <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-zinc-800 flex items-center justify-center text-gray-600 dark:text-zinc-300">
-                  <Percent className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div>
-                <span className="text-lg font-black font-mono text-gray-900 dark:text-white block tracking-tight">
-                  {bills.length}
-                </span>
-                <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-400 block mt-0.5">
-                  {filteredBills.length} in current view
-                </span>
-              </div>
-            </div>
-
-            {/* 6. Total Trips & KM */}
-            <div className="p-3.5 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 shadow-xs space-y-1.5 hover:border-indigo-300 dark:hover:border-indigo-800 transition-all">
-              <div className="flex items-center justify-between text-indigo-700 dark:text-indigo-300">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Fleet Trips & KM</span>
-                <div className="w-6 h-6 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                  <Truck className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div>
-                <span className="text-lg font-black font-mono text-indigo-900 dark:text-indigo-100 block tracking-tight">
-                  {stats.totalKm.toLocaleString('en-IN')} KM
-                </span>
-                <span className="text-[10px] font-medium text-indigo-600/80 dark:text-indigo-400/80 block mt-0.5">
-                  {stats.totalTrips} completed trips
-                </span>
-              </div>
-            </div>
-
-            {/* Custom KPI Cards for Invoices */}
-            <CustomKpiCards category="invoices" />
-          </div>
+          {/* Pure Database-Backed Dynamic KPI Dashboard Bar */}
+          <KpiDashboardBar
+            category="invoices"
+            availableCards={invoiceCards}
+            defaultKeys={defaultInvoiceKeys}
+          />
 
           {/* SEARCH & EXTENSIVE FILTERS BAR */}
           <div className="p-4 rounded-2xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/70 shadow-xs space-y-3.5">

@@ -35,6 +35,7 @@ import {
   BillData,
   getStoredInvoices,
   calculateVehicleMonthlyKm,
+  parseMonthFromDate,
   INVOICES_CHANGE_EVENT
 } from '@/lib/invoices';
 import { REFRESH_MODULE_EVENT } from '@/lib/headerEvents';
@@ -46,7 +47,8 @@ import {
   getStoredCardOrder,
   CARD_ORDER_CHANGE_EVENT,
 } from '@/lib/cardOrder';
-import { CustomKpiCards } from './CustomKpiSection';
+import { KpiDashboardBar } from './KpiDashboardBar';
+import { KpiCardDefinition } from '@/lib/kpiManager';
 
 export function VehicleManager() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -253,12 +255,22 @@ export function VehicleManager() {
     setCardOrderVersion((v) => v + 1);
   };
 
-  // Vehicle Fleet KPIs
-  const vehicleKpis = useMemo(() => {
+  // Pure Database KPI Cards for Vehicles
+  const vehicleCards = useMemo<KpiCardDefinition[]>(() => {
     const totalVehicles = vehicles.length;
     let totalFleetKm = 0;
     let totalTrips = 0;
+    let thisMonthKm = 0;
+    let thisMonthTrips = 0;
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const vehicleKmMap: Record<string, number> = {};
+
     bills.forEach((b) => {
+      const parsedMonth = parseMonthFromDate(b.date);
+      const isCurrentMonth = parsedMonth?.key === currentMonthKey;
+
       const visibleTrips = b.visibleTrips ?? b.trips?.length ?? 0;
       const trips = (b.trips || []).slice(0, visibleTrips);
       trips.forEach((t) => {
@@ -269,14 +281,97 @@ export function VehicleManager() {
           if (runningKm > 0) {
             totalFleetKm += runningKm;
             totalTrips += 1;
+            const reg = (b.vehicleNumber || 'Unknown').trim().toUpperCase();
+            vehicleKmMap[reg] = (vehicleKmMap[reg] || 0) + runningKm;
+            if (isCurrentMonth) {
+              thisMonthKm += runningKm;
+              thisMonthTrips += 1;
+            }
           }
         }
       });
     });
+
     const avgKmPerVehicle = totalVehicles > 0 ? Math.round(totalFleetKm / totalVehicles) : 0;
     const totalOdometer = vehicles.reduce((sum, v) => sum + (Number(v.currentKm) || 0), 0);
-    return { totalVehicles, totalFleetKm, totalTrips, avgKmPerVehicle, totalOdometer };
+
+    let topVehicleReg = '';
+    let topVehicleKm = 0;
+    Object.entries(vehicleKmMap).forEach(([reg, km]) => {
+      if (km > topVehicleKm) {
+        topVehicleKm = km;
+        topVehicleReg = reg;
+      }
+    });
+
+    return [
+      {
+        key: 'total_fleet',
+        title: 'Total Fleet',
+        value: `${totalVehicles} ${totalVehicles === 1 ? 'Vehicle' : 'Vehicles'}`,
+        subtitle: 'Active registered fleet units',
+        icon: 'truck',
+        color: 'blue',
+        description: 'Total registered fleet vehicles in database',
+      },
+      {
+        key: 'running_km',
+        title: 'Running Distance',
+        value: `${totalFleetKm.toLocaleString('en-IN')} KM`,
+        subtitle: 'Total trip distance logged',
+        icon: 'gauge',
+        color: 'emerald',
+        description: 'Cumulative trip distance run across all vehicles',
+      },
+      {
+        key: 'completed_trips',
+        title: 'Completed Trips',
+        value: `${totalTrips.toLocaleString('en-IN')} ${totalTrips === 1 ? 'Trip' : 'Trips'}`,
+        subtitle: 'Across all fleet vehicles',
+        icon: 'calendar',
+        color: 'indigo',
+        description: 'Total freight trips recorded across all bills',
+      },
+      {
+        key: 'avg_km_per_vehicle',
+        title: 'Avg KM / Vehicle',
+        value: `${avgKmPerVehicle.toLocaleString('en-IN')} KM`,
+        subtitle: `Combined: ${totalOdometer.toLocaleString('en-IN')} KM`,
+        icon: 'rotate',
+        color: 'amber',
+        description: 'Average distance logged per registered vehicle',
+      },
+      {
+        key: 'total_odometer',
+        title: 'Fleet Odometer',
+        value: `${totalOdometer.toLocaleString('en-IN')} KM`,
+        subtitle: 'Combined current odometer sum',
+        icon: 'activity',
+        color: 'purple',
+        description: 'Sum of live odometer readings across all vehicles',
+      },
+      {
+        key: 'this_month_km',
+        title: 'This Month KM',
+        value: `${thisMonthKm.toLocaleString('en-IN')} KM`,
+        subtitle: `${thisMonthTrips} trips in current month`,
+        icon: 'trending',
+        color: 'cyan',
+        description: 'Distance logged during current calendar month',
+      },
+      {
+        key: 'top_vehicle',
+        title: 'Top Vehicle',
+        value: topVehicleReg || 'None',
+        subtitle: topVehicleKm > 0 ? `${topVehicleKm.toLocaleString('en-IN')} KM logged` : 'No trip records',
+        icon: 'award',
+        color: 'rose',
+        description: 'Vehicle with highest running distance in bills',
+      },
+    ];
   }, [vehicles, bills]);
+
+  const defaultVehicleKeys = ['total_fleet', 'running_km', 'completed_trips', 'avg_km_per_vehicle'];
 
   // Filtered vehicles by search query and user-defined card order
   const filteredVehicles = useMemo(() => {
@@ -481,79 +576,12 @@ export function VehicleManager() {
         </div>
       </div>
 
-      {/* KPI Stats Overview */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Total Fleet</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <Truck className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              {vehicleKpis.totalVehicles} {vehicleKpis.totalVehicles === 1 ? 'Vehicle' : 'Vehicles'}
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Active registered fleet units
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Running Distance</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              <Gauge className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              {vehicleKpis.totalFleetKm.toLocaleString('en-IN')} KM
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Total trip distance logged
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Completed Trips</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-              <Calendar className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              {vehicleKpis.totalTrips.toLocaleString('en-IN')} {vehicleKpis.totalTrips === 1 ? 'Trip' : 'Trips'}
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Across all fleet vehicles
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Avg KM / Vehicle</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
-              <RotateCcw className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              {vehicleKpis.avgKmPerVehicle.toLocaleString('en-IN')} KM
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Combined: {vehicleKpis.totalOdometer.toLocaleString('en-IN')} KM
-            </p>
-          </div>
-        </div>
-
-        {/* Custom KPI Cards for Vehicles */}
-        <CustomKpiCards category="vehicles" />
-      </div>
+      {/* Pure Database-Backed Dynamic KPI Dashboard Bar */}
+      <KpiDashboardBar
+        category="vehicles"
+        availableCards={vehicleCards}
+        defaultKeys={defaultVehicleKeys}
+      />
 
       {/* Reordering Instructions Banner */}
       {isReorderMode && (

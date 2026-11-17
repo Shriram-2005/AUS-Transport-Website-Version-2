@@ -48,7 +48,8 @@ import {
   getStoredCardOrder,
   CARD_ORDER_CHANGE_EVENT,
 } from '@/lib/cardOrder';
-import { CustomKpiCards } from './CustomKpiSection';
+import { KpiDashboardBar } from './KpiDashboardBar';
+import { KpiCardDefinition } from '@/lib/kpiManager';
 
 export function DriverManager() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -253,33 +254,128 @@ export function DriverManager() {
     setCardOrderVersion((v) => v + 1);
   };
 
-  // Driver Fleet KPIs
-  const driverKpis = useMemo(() => {
+  // Pure Database KPI Cards for Drivers
+  const driverCards = useMemo<KpiCardDefinition[]>(() => {
     let totalKm = 0;
     let totalSalary = 0;
     let totalTrips = 0;
     let totalRateSum = 0;
+    let thisMonthSalary = 0;
+    let thisMonthTrips = 0;
+
+    let topDriverName = '';
+    let topDriverPay = 0;
+    let topKmDriverName = '';
+    let topKmDriverKm = 0;
+
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     drivers.forEach((d) => {
       totalRateSum += Number(d.ratePerKm || 0);
+      const monthlyStats = calculateDriverMonthlyStats(d, bills);
       const s = calculateDriverTotalStats(d, bills);
+
       totalKm += s.totalKm;
       totalSalary += s.totalSalary;
       totalTrips += s.tripCount;
+
+      if (s.totalSalary > topDriverPay) {
+        topDriverPay = s.totalSalary;
+        topDriverName = d.name;
+      }
+      if (s.totalKm > topKmDriverKm) {
+        topKmDriverKm = s.totalKm;
+        topKmDriverName = d.name;
+      }
+
+      const curStat = monthlyStats.find((m) => m.monthKey === currentMonthKey);
+      if (curStat) {
+        thisMonthSalary += curStat.totalSalary;
+        thisMonthTrips += curStat.tripCount;
+      }
     });
 
     const avgRate = drivers.length > 0 ? totalRateSum / drivers.length : 0;
     const activeCount = drivers.filter((d) => d.status !== 'inactive').length;
 
-    return {
-      totalDrivers: drivers.length,
-      activeCount,
-      totalSalary,
-      totalKm,
-      totalTrips,
-      avgRate,
-    };
+    return [
+      {
+        key: 'total_drivers',
+        title: 'Total Drivers',
+        value: `${drivers.length} ${drivers.length === 1 ? 'Driver' : 'Drivers'}`,
+        subtitle: `${activeCount} active on duty`,
+        icon: 'users',
+        color: 'emerald',
+        description: 'Total registered drivers and active count',
+      },
+      {
+        key: 'total_salary',
+        title: 'Total Driver Pay',
+        value: `₹ ${Math.round(totalSalary).toLocaleString('en-IN')}`,
+        subtitle: 'Cumulative trip salaries earned',
+        icon: 'wallet',
+        color: 'indigo',
+        description: 'Combined driver trip earnings from all invoices',
+      },
+      {
+        key: 'total_km',
+        title: 'Distance Driven',
+        value: `${totalKm.toLocaleString('en-IN')} KM`,
+        subtitle: `Across ${totalTrips.toLocaleString('en-IN')} driver trips`,
+        icon: 'gauge',
+        color: 'blue',
+        description: 'Total kilometers logged under driver names',
+      },
+      {
+        key: 'avg_rate',
+        title: 'Avg Driver Rate',
+        value: `₹ ${avgRate.toFixed(2)} / KM`,
+        subtitle: 'Fleet compensation rate',
+        icon: 'percent',
+        color: 'amber',
+        description: 'Fleet-wide average salary rate per kilometer',
+      },
+      {
+        key: 'this_month_salary',
+        title: 'This Month Pay',
+        value: `₹ ${Math.round(thisMonthSalary).toLocaleString('en-IN')}`,
+        subtitle: `${thisMonthTrips} trips in current month`,
+        icon: 'trending',
+        color: 'cyan',
+        description: 'Driver salaries earned in current calendar month',
+      },
+      {
+        key: 'total_trips',
+        title: 'Driver Trips',
+        value: `${totalTrips.toLocaleString('en-IN')} ${totalTrips === 1 ? 'Trip' : 'Trips'}`,
+        subtitle: 'Assigned freight trips logged',
+        icon: 'calendar',
+        color: 'purple',
+        description: 'Total trips where a driver was assigned',
+      },
+      {
+        key: 'top_driver_pay',
+        title: 'Top Earning Driver',
+        value: topDriverName || 'None',
+        subtitle: topDriverPay > 0 ? `₹ ${Math.round(topDriverPay).toLocaleString('en-IN')} earned` : 'No earnings yet',
+        icon: 'award',
+        color: 'rose',
+        description: 'Driver with highest cumulative earnings',
+      },
+      {
+        key: 'top_driver_km',
+        title: 'Top Distance Driver',
+        value: topKmDriverName || 'None',
+        subtitle: topKmDriverKm > 0 ? `${topKmDriverKm.toLocaleString('en-IN')} KM driven` : 'No KM logged',
+        icon: 'award',
+        color: 'slate',
+        description: 'Driver with highest distance logged',
+      },
+    ];
   }, [drivers, bills]);
+
+  const defaultDriverKeys = ['total_drivers', 'total_salary', 'total_km', 'avg_rate'];
 
   // Filtered drivers by search query and user-defined card order
   const filteredDrivers = useMemo(() => {
@@ -493,79 +589,12 @@ export function DriverManager() {
         </div>
       </div>
 
-      {/* KPI Stats Overview */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Total Drivers</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              <Users className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              {driverKpis.totalDrivers} {driverKpis.totalDrivers === 1 ? 'Driver' : 'Drivers'}
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              {driverKpis.activeCount} active on duty
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Total Driver Pay</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-              <Wallet className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              ₹ {Math.round(driverKpis.totalSalary).toLocaleString('en-IN')}
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Cumulative trip salaries earned
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Distance Driven</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <Gauge className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              {driverKpis.totalKm.toLocaleString('en-IN')} KM
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Across {driverKpis.totalTrips.toLocaleString('en-IN')} driver trips
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xs space-y-2 hover:border-gray-300 dark:hover:border-zinc-700 transition-all">
-          <div className="flex items-center justify-between text-gray-500 dark:text-zinc-400">
-            <span className="text-[11px] uppercase font-bold tracking-wider">Avg Driver Rate</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
-              <User className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
-              ₹ {driverKpis.avgRate.toFixed(2)} / KM
-            </h3>
-            <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5">
-              Fleet compensation rate
-            </p>
-          </div>
-        </div>
-
-        {/* Custom KPI Cards for Drivers */}
-        <CustomKpiCards category="drivers" />
-      </div>
+      {/* Pure Database-Backed Dynamic KPI Dashboard Bar */}
+      <KpiDashboardBar
+        category="drivers"
+        availableCards={driverCards}
+        defaultKeys={defaultDriverKeys}
+      />
 
       {/* Reordering Instructions Banner */}
       {isReorderMode && (
