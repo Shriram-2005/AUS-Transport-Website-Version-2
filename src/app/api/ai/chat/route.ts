@@ -6,9 +6,81 @@ import {
   extractBillUpdateAction,
 } from '@/lib/geminiAssistant';
 
+/**
+ * Fallback deterministic processor if external AI API encounters network or permission problems
+ */
+function handleLocalDatabaseQuery(message: string, bills: any[], vehicles: any[]) {
+  const lower = message.toLowerCase();
+
+  // 1. Query for recent bills / price / status
+  if (
+    lower.includes('recent') ||
+    lower.includes('bill number') ||
+    lower.includes('final price') ||
+    lower.includes('status') ||
+    lower.includes('bills') ||
+    lower.includes('list')
+  ) {
+    if (!bills || bills.length === 0) {
+      return 'No bills were found in the database. You can create a new bill from the Invoices dashboard.';
+    }
+
+    let response = '**Recent Bills in System:**\n\n';
+    bills.slice(0, 6).forEach((b: any) => {
+      const trips = b.trips || [];
+      const firstTrip = trips[0] || {};
+      const raw = b.raw_data || {};
+      const distance =
+        firstTrip.closingKm && firstTrip.startingKm
+          ? Math.max(0, Number(firstTrip.closingKm) - Number(firstTrip.startingKm))
+          : 0;
+
+      response += `• **Bill #${b.bill_number}**\n`;
+      response += `  - Vehicle: ${b.vehicle_number || 'N/A'}\n`;
+      response += `  - Final Net Amount: ₹ ${Math.round(Number(b.net_amount) || 0).toLocaleString('en-IN')}\n`;
+      response += `  - Payment Status: ${(b.payment_status || 'unpaid').toUpperCase()}\n`;
+      if (raw.place) response += `  - Branch / Place: ${raw.place}\n`;
+      if (distance > 0) response += `  - Trip Distance: ${distance.toLocaleString('en-IN')} KM\n`;
+      response += `  - Date: ${b.bill_date || 'N/A'}\n\n`;
+    });
+
+    response += 'To update any bill, simply tell me: *"Update bill <number>: driver <name>, closing km <km>, freight <amount>, branch <place>"*.';
+    return response;
+  }
+
+  // 2. Query for pending / unpaid bills
+  if (lower.includes('pending') || lower.includes('unpaid')) {
+    const pending = bills.filter((b: any) => b.payment_status !== 'paid');
+    if (pending.length === 0) {
+      return 'Great news! All bills in your database are marked as paid.';
+    }
+
+    let response = `**Pending Bills Awaiting Payment (${pending.length}):**\n\n`;
+    pending.slice(0, 6).forEach((b: any) => {
+      response += `• **Bill #${b.bill_number}** (${b.vehicle_number}): ₹ ${Math.round(Number(b.net_amount) || 0).toLocaleString('en-IN')}\n`;
+    });
+    return response;
+  }
+
+  // 3. Query for fleet vehicles
+  if (lower.includes('fleet') || lower.includes('vehicle') || lower.includes('km')) {
+    if (!vehicles || vehicles.length === 0) {
+      return 'No vehicles found in the fleet database.';
+    }
+
+    let response = `**Fleet Vehicles (${vehicles.length}):**\n\n`;
+    vehicles.slice(0, 8).forEach((v: any) => {
+      response += `• **${v.registration_number}** - Current Odometer: ${Number(v.current_km || 0).toLocaleString('en-IN')} KM\n`;
+    });
+    return response;
+  }
+
+  return 'I am ready to help. You can ask for recent bills, pending payments, or tell me to update any bill (e.g. "Update bill 439: driver Murugan, closing km 45800, freight 16000, branch Nilakottai").';
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { message, billContext, history = [] } = await req.json();
+    const { message, billContext } = await req.json();
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -33,7 +105,7 @@ export async function POST(req: NextRequest) {
       .select('name, phone, rate_per_km, status')
       .limit(30);
 
-    // Format minimal context for prompt
+    // Format context summary
     const billsContextSummary = (recentInvoices || []).map((inv: any) => {
       const trips = inv.trips || [];
       const firstTrip = trips[0] || {};
@@ -70,17 +142,47 @@ USER INSTRUCTION:
 ${message}
 `;
 
-    // 2. Call Gemini
-    const aiText = await callGemini(contextPayload, AUS_ASSISTANT_SYSTEM_PROMPT);
+    let aiText = '';
+    let updateAction: any = null;
 
-    // 3. Check if Gemini produced a structured bill update
-    const updateAction = extractBillUpdateAction(aiText);
+    // 2. Attempt Gemini generation with auto-fallback models
+    try {
+      aiText = await callGemini(contextPayload, AUS_ASSISTANT_SYSTEM_PROMPT);
+      updateAction = extractBillUpdateAction(aiText);
+    } catch (geminiErr: any) {
+      console.warn('Gemini call encountered error, using smart database fallback:', geminiErr.message);
+      aiText = handleLocalDatabaseQuery(message, recentInvoices || [], vehicles || []);
+
+      // Check if message is a manual bill update command
+      const billMatch = message.match(/(?:bill|invoice)\s*#?\s*(\d+)/i);
+      if (billMatch) {
+        const billNum = billMatch[1];
+        const kmCloseMatch = message.match(/closing\s*(?:km)?\s*[:=]?\s*(\d+)/i);
+        const kmStartMatch = message.match(/starting\s*(?:km)?\s*[:=]?\s*(\d+)/i);
+        const freightMatch = message.match(/freight\s*(?:rate|amount)?\s*[:=]?\s*(\d+)/i);
+        const branchMatch = message.match(/branch\s*[:=]?\s*([a-zA-Z\s]+)/i);
+        const driverMatch = message.match(/driver\s*[:=]?\s*([a-zA-Z\s]+)/i);
+
+        if (kmCloseMatch || freightMatch || branchMatch || driverMatch) {
+          updateAction = {
+            action: 'update_bill',
+            billNumber: billNum,
+            closingKm: kmCloseMatch ? Number(kmCloseMatch[1]) : undefined,
+            startingKm: kmStartMatch ? Number(kmStartMatch[1]) : undefined,
+            freightRate: freightMatch ? Number(freightMatch[1]) : undefined,
+            branchName: branchMatch ? branchMatch[1].trim() : undefined,
+            driverName: driverMatch ? driverMatch[1].trim() : undefined,
+          };
+        }
+      }
+    }
+
+    // 3. Process structured bill update if present
     let updatedBillResult: any = null;
 
     if (updateAction && updateAction.billNumber) {
       const targetBillNumber = String(updateAction.billNumber);
 
-      // Find the existing bill in Supabase
       const { data: existingRows } = await supabase
         .from('invoices')
         .select('*')
@@ -93,7 +195,6 @@ ${message}
         const raw = existingInvoice.raw_data || {};
         const trips = Array.isArray(existingInvoice.trips) ? [...existingInvoice.trips] : [];
 
-        // Update trip 0 or append
         const firstTrip = trips[0] || {
           startingKm: 0,
           closingKm: 0,
@@ -111,7 +212,6 @@ ${message}
         if (updateAction.driverName) firstTrip.driver = updateAction.driverName;
         trips[0] = firstTrip;
 
-        // Compute running distance and amounts
         const starting = Number(firstTrip.startingKm) || 0;
         const closing = Number(firstTrip.closingKm) || 0;
         const runningDistance = Math.max(0, closing - starting);
@@ -165,13 +265,11 @@ ${message}
             trips,
             runningDistance,
           };
-        } else {
-          console.error('Supabase update invoice error:', saveError);
+          aiText += `\n\nUpdated Bill #${targetBillNumber} in database (Vehicle: ${newVehicle}, Net: ₹${Math.round(netAmount).toLocaleString('en-IN')}, Branch: ${newPlace || 'None'}).`;
         }
       }
     }
 
-    // Clean conversational response removing raw json fence for pleasant display
     const cleanDisplayResponse = aiText.replace(/```json[\s\S]*?```/g, '').trim();
 
     return NextResponse.json({
@@ -182,7 +280,7 @@ ${message}
   } catch (err: any) {
     console.error('AI chat endpoint error:', err);
     return NextResponse.json(
-      { error: err.message || 'Internal server error while processing AI request.' },
+      { error: err.message || 'Error processing request.' },
       { status: 500 }
     );
   }

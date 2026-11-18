@@ -4,13 +4,14 @@ import {
   callGemini,
   AUS_ASSISTANT_SYSTEM_PROMPT,
   extractBillUpdateAction,
+  getTelegramToken,
 } from '@/lib/geminiAssistant';
-
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 
 async function sendTelegramMessage(chatId: number | string, text: string, replyMarkup?: any) {
   try {
-    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const token = getTelegramToken();
+    if (!token) return;
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
     const payload: any = {
       chat_id: chatId,
       text,
@@ -32,7 +33,9 @@ async function sendTelegramMessage(chatId: number | string, text: string, replyM
 
 async function answerCallbackQuery(callbackQueryId: string, text?: string) {
   try {
-    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+    const token = getTelegramToken();
+    if (!token) return;
+    await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

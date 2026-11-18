@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+import { getTelegramToken } from '@/lib/geminiAssistant';
 
 export async function GET(req: NextRequest) {
+  const TELEGRAM_BOT_TOKEN = getTelegramToken();
   const searchParams = req.nextUrl.searchParams;
   const webhookUrl = searchParams.get('url');
 

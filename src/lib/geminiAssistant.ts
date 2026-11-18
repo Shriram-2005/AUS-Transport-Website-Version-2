@@ -1,5 +1,8 @@
 // Gemini AI Assistant Core Engine
-// Configured for model: gemini-3.8-flash
+// Configured for model: gemini-3.8-flash with automatic fallback to gemini-3.5-flash-lite on high demand (503)
+
+import fs from 'fs';
+import path from 'path';
 
 export interface AssistantMessage {
   role: 'user' | 'assistant' | 'system';
@@ -23,18 +26,71 @@ export interface BillUpdatePayload {
   date?: string;
 }
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+/**
+ * Dynamically resolves the Gemini API key from process.env or .env.local
+ */
+export function getGeminiApiKey(): string {
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== '') {
+    return process.env.GEMINI_API_KEY.trim();
+  }
+  try {
+    const envPath = path.resolve(process.cwd(), '.env.local');
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      const match = content.match(/GEMINI_API_KEY\s*=\s*([^\r\n]+)/);
+      if (match && match[1]) {
+        return match[1].trim().replace(/^['"]|['"]$/g, '');
+      }
+    }
+  } catch (err) {
+    console.warn('Could not read .env.local for GEMINI_API_KEY:', err);
+  }
+  return '';
+}
 
 /**
- * Call Gemini API with automatic exponential backoff retry for high demand (503)
+ * Dynamically resolves the Telegram Bot token from process.env or .env.local
+ */
+export function getTelegramToken(): string {
+  if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN.trim() !== '') {
+    return process.env.TELEGRAM_BOT_TOKEN.trim();
+  }
+  try {
+    const envPath = path.resolve(process.cwd(), '.env.local');
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      const match = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*([^\r\n]+)/);
+      if (match && match[1]) {
+        return match[1].trim().replace(/^['"]|['"]$/g, '');
+      }
+    }
+  } catch (err) {
+    console.warn('Could not read .env.local for TELEGRAM_BOT_TOKEN:', err);
+  }
+  return '';
+}
+
+/**
+ * Call Gemini API:
+ * 1. Tries user-requested `gemini-3.8-flash`
+ * 2. If high demand (503) or not found, automatically falls back to `gemini-3.5-flash-lite` or `gemini-3.7-flash`
  */
 export async function callGemini(
   prompt: string,
-  systemInstruction?: string,
-  retries = 3
+  systemInstruction?: string
 ): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    throw new Error('Gemini API key is missing. Please check GEMINI_API_KEY in .env.local.');
+  }
+
+  // Candidate models: user-specified gemini-3.8-flash first, followed by proven fast models
+  const candidateModels = [
+    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.7-flash',
+    'gemini-flash-latest',
+  ];
 
   const bodyPayload: any = {
     contents: [
@@ -55,8 +111,10 @@ export async function callGemini(
     };
   }
 
-  let delay = 1000;
-  for (let attempt = 1; attempt <= retries; attempt++) {
+  let lastError = '';
+
+  for (const model of candidateModels) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -64,37 +122,24 @@ export async function callGemini(
         body: JSON.stringify(bodyPayload),
       });
 
-      if (res.status === 503 || res.status === 429) {
-        if (attempt < retries) {
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          delay *= 2;
-          continue;
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          return text;
         }
       }
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(
-          errorData.error?.message || `Gemini API error with status code ${res.status}`
-        );
-      }
-
-      const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        throw new Error('Empty response received from Gemini API');
-      }
-      return text;
+      lastError = data.error?.message || `HTTP ${res.status}`;
+      console.warn(`Gemini model [${model}] responded with: ${lastError}. Trying fallback model...`);
     } catch (err: any) {
-      if (attempt === retries) {
-        throw err;
-      }
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      delay *= 2;
+      lastError = err.message;
+      console.warn(`Gemini model [${model}] fetch error: ${lastError}. Trying fallback model...`);
     }
   }
 
-  throw new Error('Failed to communicate with Gemini after multiple attempts.');
+  throw new Error(lastError || 'Failed to communicate with Gemini API.');
 }
 
 /**
@@ -106,7 +151,8 @@ You help operators query, create, and update freight invoices, driver assignment
 
 Core Capabilities:
 1. Find bills by bill number (e.g. 439), vehicle registration (e.g. TN 76 AK 1094), driver name, branch/place, or status.
-2. Parse unstructured user messages into exact billing updates:
+2. When the user asks for recent bills, final price, or status, provide clear bullet points with Bill Number, Vehicle, Net Receivable Amount, and Status.
+3. Parse unstructured user messages into exact billing updates:
    - Starting KM and Closing KM (running KM is Closing - Starting)
    - Freight rate / total amount
    - Deductions: Advance, Diesel cut, Toll expenses, Loading/Unloading charges
@@ -115,7 +161,6 @@ Core Capabilities:
    - Branch or Place assignment (e.g. Nilakottai, BPD, etc.)
    - TDS cut percentage (defaults to 1%, configurable per bill)
    - Payment status (paid or unpaid)
-3. Return accurate calculations and polite, clear answers.
 4. When the user asks to update or fill a bill, return a clear explanation AND include a JSON block fenced with \`\`\`json { ... } \`\`\` containing the fields to update:
 {
   "action": "update_bill",
