@@ -116,11 +116,16 @@ export async function callGemini(
   for (const model of candidateModels) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 9000);
+
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyPayload),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data = await res.json().catch(() => ({}));
 
@@ -134,8 +139,8 @@ export async function callGemini(
       lastError = data.error?.message || `HTTP ${res.status}`;
       console.warn(`Gemini model [${model}] responded with: ${lastError}. Trying fallback model...`);
     } catch (err: any) {
-      lastError = err.message;
-      console.warn(`Gemini model [${model}] fetch error: ${lastError}. Trying fallback model...`);
+      lastError = err.name === 'AbortError' ? 'Request timed out' : err.message;
+      console.warn(`Gemini model [${model}] error: ${lastError}. Trying fallback model...`);
     }
   }
 
