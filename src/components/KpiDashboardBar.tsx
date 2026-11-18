@@ -614,3 +614,4 @@ export function KpiDashboardBar({ category, availableCards, defaultKeys }: KpiDa
     </div>
   );
 }
+

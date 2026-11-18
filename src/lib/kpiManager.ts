@@ -63,3 +63,4 @@ export function resetStoredKpiConfig(category: string, defaultKeys: string[]): v
     console.error('Error resetting KPI config:', err);
   }
 }
+
