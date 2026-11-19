@@ -267,13 +267,13 @@ export async function POST(req: NextRequest) {
       if (isValid) {
         grantEditSession(sessionId);
         return NextResponse.json({
-          text: '### 🔓 Edit Mode Unlocked Successfully!\n\n> You have been granted a strict **5-minute session** to update records across all categories.\n\nAfter 5 minutes, it will automatically return to Read-Only mode.\n\n*What would you like to update?*',
+          text: '### Edit Mode Unlocked Successfully\n\n> You have been granted a strict **5-minute session** to update records across all categories.\n\nAfter 5 minutes, it will automatically return to Read-Only mode.\n\n*What would you like to update?*',
           isEditAuthorized: true,
           remainingSeconds: 300,
         });
       } else {
         return NextResponse.json({
-          text: '### ❌ Incorrect Password\n\n> Please enter the exact password you use to log in to the Supabase admin dashboard (`austransportpm@gmail.com`).',
+          text: '### Incorrect Password\n\n> Please enter the exact password you use to log in to the Supabase admin dashboard (`austransportpm@gmail.com`).',
           isEditAuthorized: false,
           remainingSeconds: 0,
         });
@@ -345,7 +345,7 @@ export async function POST(req: NextRequest) {
     // 3. Strict Security Check: Block edits if not authorized with 5-minute session
     if (isEditIntent && !isCurrentlyAuthorized) {
       return NextResponse.json({
-        text: '### 🔒 Edit Mode Locked (Read-Only Mode Active)\n\n> The AI Assistant has full read access across all categories by default to keep company records safe.\n\nTo make edits or update bills, you must enter your Supabase login password. Once verified, you will have a strict **5-minute timer** to make your changes.\n\n*Please click "Unlock Edit Mode" or reply with `/unlock <password>`.*',
+        text: '### Edit Mode Locked (Read-Only Mode Active)\n\n> The AI Assistant has full read access across all categories by default to keep company records safe.\n\nTo make edits or update bills, you must enter your Supabase login password. Once verified, you will have a strict **5-minute timer** to make your changes.\n\n*Please click "Unlock Edit Mode" or reply with `/unlock <password>`.*',
         requiresAuth: true,
         isEditAuthorized: false,
         remainingSeconds: 0,
@@ -540,7 +540,8 @@ ${message}
     try {
       aiText = await callGemini(contextPayload, AUS_ASSISTANT_SYSTEM_PROMPT);
       updateAction = extractBillUpdateAction(aiText);
-    } catch {
+    } catch (geminiErr: any) {
+      console.warn('Gemini API call timed out or failed, falling back to local database synthesizer:', geminiErr?.message);
       // Fallback regex matching for updates if model is unavailable
       const billMatch = message.match(/(?:bill|invoice)\s*#?\s*(\d+)/i);
       if (billMatch) {
@@ -562,6 +563,26 @@ ${message}
           driverName: driverMatch ? driverMatch[1].trim() : undefined,
           branchName: branchMatch ? branchMatch[1].trim() : undefined,
         };
+      }
+
+      if (!aiText && !updateAction) {
+        if (lower.includes('pending') || lower.includes('unpaid')) {
+          aiText = formatPendingBillsTable(recentInvoices || []);
+        } else if (lower.includes('fuel') || lower.includes('diesel') || lower.includes('bunk')) {
+          aiText = formatFuelTable(fuelEntries || []);
+        } else if (lower.includes('maintenance') || lower.includes('service') || lower.includes('repair')) {
+          aiText = formatMaintenanceTable(maintenanceEntries || []);
+        } else if (lower.includes('expense') || lower.includes('toll') || lower.includes('fastag')) {
+          aiText = formatExpensesTable(expenseEntries || []);
+        } else if (lower.includes('driver')) {
+          aiText = formatDriversTable(drivers || []);
+        } else if (lower.includes('profit') || lower.includes('pnl') || lower.includes('margin') || lower.includes('loss')) {
+          aiText = formatPnlTable(pnlSummary || []);
+        } else if (lower.includes('fleet') || lower.includes('vehicle') || lower.includes('truck') || lower.includes('odometer')) {
+          aiText = formatFleetTable(vehicles || []);
+        } else {
+          aiText = formatBillsTable(recentInvoices || []);
+        }
       }
     }
 
@@ -637,9 +658,9 @@ ${message}
           runningDistance,
         };
 
-        aiText = `### ✅ Bill #${targetBillNumber} Updated Successfully!\n\n> Changes have been saved to Supabase and are live on the dashboard.\n\n| Field | Value |\n| :--- | :--- |\n| **Vehicle** | ${newVehicle} |\n| **Driver** | ${firstTrip.driver || 'None'} |\n| **Trip Distance** | ${runningDistance.toLocaleString('en-IN')} KM |\n| **Final Net Amount** | ₹ ${Math.round(netAmount).toLocaleString('en-IN')} |\n| **Branch / Place** | ${newPlace || 'Not assigned'} |\n| **Payment Status** | \`${newStatus.toUpperCase()}\` |`;
+        aiText = `### Bill #${targetBillNumber} Updated Successfully\n\n> Changes have been saved to Supabase and are live on the dashboard.\n\n| Field | Value |\n| :--- | :--- |\n| **Vehicle** | ${newVehicle} |\n| **Driver** | ${firstTrip.driver || 'None'} |\n| **Trip Distance** | ${runningDistance.toLocaleString('en-IN')} KM |\n| **Final Net Amount** | ₹ ${Math.round(netAmount).toLocaleString('en-IN')} |\n| **Branch / Place** | ${newPlace || 'Not assigned'} |\n| **Payment Status** | \`${newStatus.toUpperCase()}\` |`;
       } else {
-        aiText = `### ⚠️ Bill Not Found\n\n> Could not find **Bill #${targetBillNumber}** in the database. Please verify the bill number.`;
+        aiText = `### Bill Not Found\n\n> Could not find **Bill #${targetBillNumber}** in the database. Please verify the bill number.`;
       }
     }
 

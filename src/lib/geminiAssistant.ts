@@ -87,6 +87,7 @@ export async function callGemini(
   // Candidate models: user-specified gemini-3.8-flash first, followed by proven fast models
   const candidateModels = [
     process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    'gemini-3.1-flash-lite',
     'gemini-3.5-flash-lite',
     'gemini-3.7-flash',
     'gemini-flash-latest',
@@ -117,7 +118,7 @@ export async function callGemini(
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 9000);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
       const res = await fetch(url, {
         method: 'POST',

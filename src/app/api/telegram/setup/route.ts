@@ -112,11 +112,20 @@ export async function GET(req: NextRequest) {
 <body>
   <div class="card">
     <div class="header">
-      <div class="icon">🤖</div>
+      <div class="icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 8V4H8"></path>
+          <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+          <path d="M2 14h2"></path>
+          <path d="M20 14h2"></path>
+          <path d="M15 13v2"></path>
+          <path d="M9 13v2"></path>
+        </svg>
+      </div>
       <div>
         <h1>AUS Telegram Bot Setup</h1>
         <div class="status-badge ${isWebhookActive ? 'active' : 'pending'}">
-          ${isWebhookActive ? '● Webhook Active & Connected' : '○ Webhook Not Registered Yet'}
+          ${isWebhookActive ? 'Webhook Active and Connected' : 'Webhook Not Registered'}
         </div>
       </div>
     </div>
@@ -151,7 +160,7 @@ export async function GET(req: NextRequest) {
     </a>
 
     <a href="?url=${encodeURIComponent(targetWebhookUrl || `${proto}://${host}/api/telegram/webhook`)}" class="btn btn-secondary">
-      🔄 Re-register / Refresh Webhook Now
+      Re-register / Refresh Webhook Now
     </a>
   </div>
 </body>

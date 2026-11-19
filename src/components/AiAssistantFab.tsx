@@ -528,14 +528,14 @@ export function AiAssistantFab() {
   };
 
   const quickPrompts = [
-    { label: '📋 Invoices', query: 'Show recent invoices with final price and status' },
-    { label: '⏳ Pending Bills', query: 'List pending unpaid bills awaiting payment' },
-    { label: '🚚 Fleet KMs', query: 'Show active fleet vehicles with current odometer KM' },
-    { label: '⛽ Fuel Records', query: 'Show fuel management logs and bunk diesel refills' },
-    { label: '🔧 Maintenance', query: 'Show vehicle repairs and maintenance logs' },
-    { label: '💸 Expenses', query: 'Show fleet expenses including FASTag, tolls, and loading' },
-    { label: '👨‍✈️ Drivers', query: 'Show drivers directory with mobile numbers and rates' },
-    { label: '📊 Profit & Loss', query: 'Show profit and loss overview across fleet vehicles' },
+    { label: '[Invoices]', query: 'Show recent invoices with final price and status' },
+    { label: '[Pending Bills]', query: 'List pending unpaid bills awaiting payment' },
+    { label: '[Fleet KMs]', query: 'Show active fleet vehicles with current odometer KM' },
+    { label: '[Fuel Records]', query: 'Show fuel management logs and bunk diesel refills' },
+    { label: '[Maintenance]', query: 'Show vehicle repairs and maintenance logs' },
+    { label: '[Expenses]', query: 'Show fleet expenses including FASTag, tolls, and loading' },
+    { label: '[Drivers]', query: 'Show drivers directory with mobile numbers and rates' },
+    { label: '[Profit & Loss]', query: 'Show profit and loss overview across fleet vehicles' },
   ];
 
   return (
