@@ -113,6 +113,7 @@ ${
 
     const chatId = String(message.chat.id);
     const text = message.text.trim();
+    const lower = text.toLowerCase();
     const supabase = createClient();
 
     // Check Password Unlock Attempt: /unlock <password>
@@ -167,6 +168,42 @@ By default, this bot is in <b>Read-Only Mode</b> to safely fetch and tell you cu
         resize_keyboard: true,
       };
       await sendTelegramMessage(chatId, welcome, keyboard);
+      return NextResponse.json({ ok: true });
+    }
+
+    // Friendly Greetings Handler (e.g. Hello, Hi, Hey)
+    const isGreeting =
+      lower === 'hello' ||
+      lower === 'hi' ||
+      lower === 'hey' ||
+      lower === 'vanakkam' ||
+      lower === 'namaste' ||
+      lower === 'good morning' ||
+      lower === 'good afternoon' ||
+      lower === 'good evening' ||
+      lower === 'test';
+
+    if (isGreeting) {
+      const greetingMsg = `
+<b>Hello! 👋 I am your AUS Transport Assistant.</b>
+
+I am connected to your live database. You can:
+• <b>View Recent Bills:</b> Tap /bills
+• <b>Check Unpaid Invoices:</b> Tap /pending
+• <b>Check Vehicle KM:</b> Tap /fleet
+• <b>Query any Bill:</b> Just type <code>bill 437</code> or <code>437</code>
+• <b>Ask Questions:</b> <i>"recent bill number and final price"</i>
+
+<i>🔒 Read-Only mode is active. To edit any bill, send <code>/unlock &lt;password&gt;</code> with your Supabase login password.</i>
+`;
+      const keyboard = {
+        keyboard: [
+          [{ text: '/bills' }, { text: '/pending' }],
+          [{ text: '/fleet' }],
+        ],
+        resize_keyboard: true,
+      };
+      await sendTelegramMessage(chatId, greetingMsg, keyboard);
       return NextResponse.json({ ok: true });
     }
 
@@ -238,7 +275,6 @@ By default, this bot is in <b>Read-Only Mode</b> to safely fetch and tell you cu
     }
 
     // Check if the user intends to edit or modify
-    const lower = text.toLowerCase();
     const isEditIntent =
       lower.includes('update') ||
       lower.includes('edit') ||
@@ -353,8 +389,27 @@ USER MESSAGE IN TELEGRAM (EDIT AUTHORIZED):
 ${text}
 `;
 
-    const aiResponse = await callGemini(contextPayload, AUS_ASSISTANT_SYSTEM_PROMPT);
-    const updateAction = extractBillUpdateAction(aiResponse);
+    let aiResponse = '';
+    let updateAction: any = null;
+    try {
+      aiResponse = await callGemini(contextPayload, AUS_ASSISTANT_SYSTEM_PROMPT);
+      updateAction = extractBillUpdateAction(aiResponse);
+    } catch (aiErr: any) {
+      console.warn('Telegram Gemini AI call failed:', aiErr.message);
+      const fallbackMsg = `
+<b>AUS Transport Assistant</b>
+
+I could not connect to the AI model at this moment.
+
+You can still query your database directly:
+• /bills - View recent bills
+• /pending - View pending payments
+• /fleet - View vehicle distance
+• Type any bill number (e.g. <code>bill 437</code>) to view its details.
+`;
+      await sendTelegramMessage(chatId, fallbackMsg);
+      return NextResponse.json({ ok: true });
+    }
 
     if (updateAction && updateAction.billNumber) {
       const targetBillNumber = String(updateAction.billNumber);

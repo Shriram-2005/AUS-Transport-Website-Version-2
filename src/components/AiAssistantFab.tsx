@@ -213,6 +213,19 @@ export function AiAssistantFab() {
     }
   }, [isOpen, messages]);
 
+  // Automatically register Telegram bot webhook when running on production domain
+  useEffect(() => {
+    if (
+      typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1'
+    ) {
+      fetch('/api/telegram/setup', {
+        headers: { Accept: 'application/json' },
+      }).catch(() => {});
+    }
+  }, []);
+
   const formatTimer = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;

@@ -70,3 +70,4 @@ export function getSessionRemainingSeconds(sessionId: string): number {
 export function revokeEditSession(sessionId: string): void {
   sessionStore.delete(sessionId);
 }
+
