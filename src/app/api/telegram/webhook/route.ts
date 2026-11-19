@@ -13,6 +13,17 @@ import {
   getSessionRemainingSeconds,
 } from '@/lib/aiAuth';
 
+const fullKeyboard = {
+  keyboard: [
+    [{ text: '📋 Invoices' }, { text: '⏳ Pending Bills' }],
+    [{ text: '🚚 Fleet KMs' }, { text: '⛽ Fuel Records' }],
+    [{ text: '🔧 Maintenance' }, { text: '💸 Expenses' }],
+    [{ text: '👨‍✈️ Drivers' }, { text: '📊 Profit & Loss' }],
+    [{ text: '🔓 Unlock Edit Mode' }, { text: '❓ Help' }],
+  ],
+  resize_keyboard: true,
+};
+
 async function sendTelegramMessage(chatId: number | string, text: string, replyMarkup?: any) {
   try {
     const token = getTelegramToken();
@@ -64,7 +75,7 @@ export async function POST(req: NextRequest) {
       const chatId = String(cb.message?.chat?.id);
       const data = cb.data || '';
 
-      await answerCallbackQuery(cb.id, 'Bill selected');
+      await answerCallbackQuery(cb.id, 'Data retrieved');
 
       if (data.startsWith('bill_')) {
         const billNumber = data.replace('bill_', '');
@@ -82,24 +93,38 @@ export async function POST(req: NextRequest) {
           const trip = trips[0] || {};
           const isAuthed = isEditSessionValid(chatId);
           const remaining = getSessionRemainingSeconds(chatId);
+          const distance =
+            trip.closingKm && trip.startingKm
+              ? Math.max(0, Number(trip.closingKm) - Number(trip.startingKm))
+              : 0;
 
           const msg = `
-<b>Bill Details #${inv.bill_number}</b>
-• <b>Vehicle:</b> <code>${inv.vehicle_number || 'N/A'}</code>
-• <b>Final Net Amount:</b> Rs.${Number(inv.net_amount || 0).toLocaleString('en-IN')}
-• <b>Payment Status:</b> <b>${(inv.payment_status || 'unpaid').toUpperCase()}</b>
-• <b>Branch / Place:</b> ${raw.place || 'Not Assigned'}
-• <b>Bill Date:</b> ${inv.bill_date || 'N/A'}
-• <b>Last Recorded KM:</b> Start ${trip.startingKm || 0} - Close ${trip.closingKm || 0}
-• <b>Driver:</b> ${trip.driver || 'None'}
+<b>📋 Bill Details #${inv.bill_number}</b>
+<blockquote>Vehicle: ${inv.vehicle_number || 'N/A'} • Status: ${(inv.payment_status || 'unpaid').toUpperCase()}</blockquote>
+
+<pre>
+METRIC          VALUE
+---------------------------------------
+Bill Number     #${inv.bill_number}
+Vehicle Plate   ${inv.vehicle_number || 'N/A'}
+Final Net       ₹ ${Math.round(Number(inv.net_amount) || 0).toLocaleString('en-IN')}
+Payment Status  ${(inv.payment_status || 'unpaid').toUpperCase()}
+Branch / Place  ${raw.place || 'Not Assigned'}
+Bill Date       ${inv.bill_date || 'N/A'}
+Trip Distance   ${distance > 0 ? `${distance.toLocaleString('en-IN')} KM` : '0 KM'}
+Driver Name     ${trip.driver || raw.driverName || 'None'}
+Freight Total   ₹ ${Number(trip.freightRate || 0).toLocaleString('en-IN')}
+Advance Paid    ₹ ${Number(trip.advanceAmount || 0).toLocaleString('en-IN')}
+Diesel Cut      ₹ ${Number(trip.diesel || 0).toLocaleString('en-IN')}
+</pre>
 
 ${
   isAuthed
     ? `<i>🔓 Edit Mode Active (${Math.floor(remaining / 60)}m ${remaining % 60}s remaining). Reply with changes to update.</i>`
-    : `<i>🔒 Read-Only Mode. To make changes to this bill, send <code>/unlock YOUR_PASSWORD</code> to activate the 5-minute edit timer.</i>`
+    : `<i>🔒 Read-Only Mode. To make changes to this bill, send <code>/unlock YOUR_PASSWORD</code>.</i>`
 }
 `;
-          await sendTelegramMessage(chatId, msg);
+          await sendTelegramMessage(chatId, msg, fullKeyboard);
           return NextResponse.json({ ok: true });
         }
       }
@@ -116,7 +141,31 @@ ${
     const lower = text.toLowerCase();
     const supabase = createClient();
 
-    // Check Password Unlock Attempt: /unlock <password>
+    // Check Password Unlock Attempt: /unlock <password> or button
+    if (text === '🔓 Unlock Edit Mode' || text === '/unlock') {
+      const isAuthed = isEditSessionValid(chatId);
+      const remaining = getSessionRemainingSeconds(chatId);
+      if (isAuthed) {
+        await sendTelegramMessage(
+          chatId,
+          `<b>🔓 Edit Mode is Already Active!</b>\n\nYou have <b>${Math.floor(remaining / 60)}m ${remaining % 60}s</b> remaining.\n\nReply with your changes to update records.`,
+          fullKeyboard
+        );
+        return NextResponse.json({ ok: true });
+      }
+      const askPwd = `
+<b>🔒 Authentication Required for Edits</b>
+<blockquote>All categories are read-only by default to prevent accidental data changes.</blockquote>
+
+To unlock edit privileges for <b>5 minutes</b>, reply with:
+<code>/unlock YOUR_SUPABASE_PASSWORD</code>
+
+<i>Use the same password you use to log in to the Supabase admin dashboard.</i>
+`;
+      await sendTelegramMessage(chatId, askPwd, fullKeyboard);
+      return NextResponse.json({ ok: true });
+    }
+
     if (text.startsWith('/unlock ') || text.startsWith('/password ')) {
       const pwd = text.replace(/^\/(?:unlock|password)\s+/, '').trim();
       const isValid = await verifyAdminPassword(pwd);
@@ -125,156 +174,115 @@ ${
         grantEditSession(chatId);
         const unlockMsg = `
 <b>🔓 Edit Mode Unlocked!</b>
-
-You have been granted a strict <b>5-minute timer</b> to make updates, edit bills, assign drivers, or change branches.
+<blockquote>Strict 5-minute window active. You can now modify bills, trips, drivers, and branches.</blockquote>
 
 After 5 minutes, it will automatically return to Read-Only mode.
 
-<i>What would you like to update?</i>
-Example:
+<b>Example Update Command:</b>
 <code>Update bill 439: driver Murugan, closing km 45800, freight 16000, branch Nilakottai</code>
 `;
-        await sendTelegramMessage(chatId, unlockMsg);
+        await sendTelegramMessage(chatId, unlockMsg, fullKeyboard);
         return NextResponse.json({ ok: true });
       } else {
         await sendTelegramMessage(
           chatId,
-          '<b>❌ Incorrect Password.</b>\nPlease enter the same password you use to log in to the Supabase admin dashboard.'
+          '<b>❌ Incorrect Password.</b>\nPlease enter the same password you use to log in to the Supabase admin dashboard (`austransportpm@gmail.com`).',
+          fullKeyboard
         );
         return NextResponse.json({ ok: true });
       }
     }
 
-    // Command: /start or /help
-    if (text === '/start' || text === '/help') {
+    // Command: /start or /help or button
+    if (text === '/start' || text === '/help' || text === '❓ Help' || text === '❓ Help & Commands') {
       const welcome = `
 <b>AUS Transport Assistant</b>
-By default, this bot is in <b>Read-Only Mode</b> to safely fetch and tell you current bills, final prices, and payment statuses.
+<blockquote>Comprehensive fleet management & live database intelligence. Read-Only mode active.</blockquote>
 
-<b>Commands:</b>
-/bills - Fetch recent bills
-/pending - Fetch unpaid bills
-/fleet - Fetch vehicle distance
-/unlock &lt;password&gt; - Unlock 5-minute edit mode with your Supabase login password
+<b>Available Categories (Tap buttons below or type commands):</b>
+• <b>📋 Invoices:</b> Recent bills, final prices & payment status
+• <b>⏳ Pending Bills:</b> All unpaid receivables
+• <b>🚚 Fleet KMs:</b> Active trucks and current odometer readings
+• <b>⛽ Fuel Records:</b> Diesel logs, bunk receipts, and total spend
+• <b>🔧 Maintenance:</b> Workshop repairs, service categories & costs
+• <b>💸 Expenses:</b> Tolls, FASTag, driver bata, loading charges
+• <b>👨‍✈️ Drivers:</b> Driver directory, contact numbers & km rates
+• <b>📊 Profit & Loss:</b> Revenue vs. fuel & operating profit
+• <b>🔓 Unlock Edit Mode:</b> Enter password for 5-minute editing
 
-<b>Example Query:</b>
-<i>"recent bill number and its final price and status"</i>
+<i>You can also ask naturally in English, e.g. "What is the price of bill 437?" or "How much diesel did we fill this week?"</i>
 `;
-      const keyboard = {
-        keyboard: [
-          [{ text: '/bills' }, { text: '/pending' }],
-          [{ text: '/fleet' }],
-        ],
-        resize_keyboard: true,
-      };
-      await sendTelegramMessage(chatId, welcome, keyboard);
+      await sendTelegramMessage(chatId, welcome, fullKeyboard);
       return NextResponse.json({ ok: true });
     }
 
-    // Friendly Greetings Handler (e.g. Hello, Hi, Hey)
+    // Friendly Greetings
     const isGreeting =
       lower === 'hello' ||
       lower === 'hi' ||
       lower === 'hey' ||
       lower === 'vanakkam' ||
       lower === 'namaste' ||
-      lower === 'good morning' ||
-      lower === 'good afternoon' ||
-      lower === 'good evening' ||
       lower === 'test';
 
     if (isGreeting) {
       const greetingMsg = `
 <b>Hello! 👋 I am your AUS Transport Assistant.</b>
+<blockquote>Connected live to all 7 categories of your freight database.</blockquote>
 
-I am connected to your live database. You can:
-• <b>View Recent Bills:</b> Tap /bills
-• <b>Check Unpaid Invoices:</b> Tap /pending
-• <b>Check Vehicle KM:</b> Tap /fleet
-• <b>Query any Bill:</b> Just type <code>bill 437</code> or <code>437</code>
-• <b>Ask Questions:</b> <i>"recent bill number and final price"</i>
-
-<i>🔒 Read-Only mode is active. To edit any bill, send <code>/unlock &lt;password&gt;</code> with your Supabase login password.</i>
+Choose an option from the menu below, or ask any question about bills, fuel, maintenance, or drivers.
 `;
-      const keyboard = {
-        keyboard: [
-          [{ text: '/bills' }, { text: '/pending' }],
-          [{ text: '/fleet' }],
-        ],
-        resize_keyboard: true,
-      };
-      await sendTelegramMessage(chatId, greetingMsg, keyboard);
+      await sendTelegramMessage(chatId, greetingMsg, fullKeyboard);
       return NextResponse.json({ ok: true });
     }
 
-    // Command: /bills (Fetch recent bills)
-    if (text === '/bills') {
-      const { data: bills } = await supabase
+    // Fetch live records across all categories
+    const [
+      { data: recentInvoices },
+      { data: vehicles },
+      { data: drivers },
+      { data: fuelEntries },
+      { data: maintenanceEntries },
+      { data: expenseEntries },
+      { data: pnlSummary },
+    ] = await Promise.all([
+      supabase
         .from('invoices')
-        .select('bill_number, vehicle_number, net_amount, payment_status, bill_date')
+        .select('bill_number, bill_date, vehicle_number, net_amount, payment_status, raw_data, trips')
         .order('created_at', { ascending: false })
-        .limit(6);
-
-      if (!bills || bills.length === 0) {
-        await sendTelegramMessage(chatId, 'No bills found in the database.');
-        return NextResponse.json({ ok: true });
-      }
-
-      const inlineButtons = bills.map((b: any) => [
-        {
-          text: `Bill #${b.bill_number} - ${b.vehicle_number} (Rs.${Number(b.net_amount).toLocaleString('en-IN')})`,
-          callback_data: `bill_${b.bill_number}`,
-        },
-      ]);
-
-      await sendTelegramMessage(
-        chatId,
-        '<b>Recent Bills in System (Tap to view details):</b>',
-        { inline_keyboard: inlineButtons }
-      );
-      return NextResponse.json({ ok: true });
-    }
-
-    // Command: /pending (Fetch unpaid bills)
-    if (text === '/pending') {
-      const { data: bills } = await supabase
-        .from('invoices')
-        .select('bill_number, vehicle_number, net_amount, bill_date')
-        .eq('payment_status', 'unpaid')
-        .order('created_at', { ascending: false })
-        .limit(8);
-
-      if (!bills || bills.length === 0) {
-        await sendTelegramMessage(chatId, 'All bills are currently marked as <b>PAID</b>.');
-        return NextResponse.json({ ok: true });
-      }
-
-      let summary = '<b>Pending Bills Awaiting Payment:</b>\n\n';
-      bills.forEach((b: any) => {
-        summary += `• <b>Bill #${b.bill_number}</b> (${b.vehicle_number}): Rs.${Number(b.net_amount).toLocaleString('en-IN')}\n`;
-      });
-
-      await sendTelegramMessage(chatId, summary);
-      return NextResponse.json({ ok: true });
-    }
-
-    // Command: /fleet (Fetch fleet vehicles)
-    if (text === '/fleet') {
-      const { data: vehicles } = await supabase
+        .limit(15),
+      supabase
         .from('vehicles')
         .select('registration_number, current_km')
-        .limit(10);
+        .order('current_km', { ascending: false })
+        .limit(20),
+      supabase
+        .from('drivers')
+        .select('name, phone, rate_per_km, status, license_number')
+        .order('name', { ascending: true })
+        .limit(20),
+      supabase
+        .from('fuel_entries')
+        .select('vehicle_number, entry_date, bunk_name, liters, rate_per_liter, total_amount')
+        .order('created_at', { ascending: false })
+        .limit(15),
+      supabase
+        .from('maintenance_entries')
+        .select('vehicle_number, entry_date, category, description, amount, workshop_name')
+        .order('created_at', { ascending: false })
+        .limit(15),
+      supabase
+        .from('expense_entries')
+        .select('vehicle_number, entry_date, category, description, amount, payment_mode')
+        .order('created_at', { ascending: false })
+        .limit(15),
+      supabase
+        .from('vehicle_profit_and_loss_summary')
+        .select('*')
+        .limit(15),
+    ]);
 
-      let summary = '<b>Active Fleet Vehicles:</b>\n\n';
-      (vehicles || []).forEach((v: any) => {
-        summary += `• <b>${v.registration_number}</b> - ${Number(v.current_km).toLocaleString('en-IN')} KM\n`;
-      });
-
-      await sendTelegramMessage(chatId, summary);
-      return NextResponse.json({ ok: true });
-    }
-
-    // Check if the user intends to edit or modify
+    // Check if user intends to edit
     const isEditIntent =
       lower.includes('update') ||
       lower.includes('edit') ||
@@ -282,37 +290,29 @@ I am connected to your live database. You can:
       lower.includes('modify') ||
       lower.includes('fill') ||
       lower.includes('assign') ||
-      lower.includes('set branch');
+      lower.includes('set branch') ||
+      lower.includes('mark paid');
 
     const isAuthed = isEditSessionValid(chatId);
 
     // Block edit if not authorized
     if (isEditIntent && !isAuthed) {
       const lockMsg = `
-<b>🔒 Edit Mode Locked (Read-Only Active)</b>
+<b>🔒 Edit Mode Locked (Read-Only Mode Active)</b>
+<blockquote>All categories can only be viewed by default to protect company records.</blockquote>
 
-By default, the bot can only fetch and tell you existing details.
-
-To edit or update bills, you must authenticate using your Supabase login password.
-
-Please reply with:
+To make updates, enter your Supabase login password:
 <code>/unlock YOUR_PASSWORD</code>
 
-Once verified, you will have a strict <b>5-minute window</b> to make changes.
+<i>Once verified, you will have a strict 5-minute window to modify bills and records.</i>
 `;
-      await sendTelegramMessage(chatId, lockMsg);
+      await sendTelegramMessage(chatId, lockMsg, fullKeyboard);
       return NextResponse.json({ ok: true });
     }
 
-    // Fetch existing details for read query
-    const { data: recentInvoices } = await supabase
-      .from('invoices')
-      .select('bill_number, bill_date, vehicle_number, net_amount, payment_status, raw_data, trips')
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    // If read request (e.g. recent bills, price, status, or specific bill)
+    // READ OPERATIONS ACROSS ALL CATEGORIES
     if (!isEditIntent) {
+      // 1. Single Bill Query
       const specificBillMatch =
         text.match(/(?:bill|invoice)\s*#?\s*(\d+)/i) ||
         (text.length <= 6 && text.match(/^#?(\d{1,6})$/));
@@ -330,7 +330,6 @@ Once verified, you will have a strict <b>5-minute window</b> to make changes.
           const raw = inv.raw_data || {};
           const trips = inv.trips || [];
           const trip = trips[0] || {};
-          const isAuthed = isEditSessionValid(chatId);
           const remaining = getSessionRemainingSeconds(chatId);
           const distance =
             trip.closingKm && trip.startingKm
@@ -338,54 +337,251 @@ Once verified, you will have a strict <b>5-minute window</b> to make changes.
               : 0;
 
           const msg = `
-<b>Bill Details #${inv.bill_number}</b>
-• <b>Vehicle:</b> <code>${inv.vehicle_number || 'N/A'}</code>
-• <b>Final Net Amount:</b> Rs.${Number(inv.net_amount || 0).toLocaleString('en-IN')}
-• <b>Payment Status:</b> <b>${(inv.payment_status || 'unpaid').toUpperCase()}</b>
-• <b>Branch / Place:</b> ${raw.place || 'Not Assigned'}
-• <b>Bill Date:</b> ${inv.bill_date || 'N/A'}
-• <b>Distance:</b> ${distance.toLocaleString('en-IN')} KM
-• <b>Driver:</b> ${trip.driver || 'None'}
+<b>📋 Bill Details #${inv.bill_number}</b>
+<blockquote>Vehicle: ${inv.vehicle_number || 'N/A'} • Status: ${(inv.payment_status || 'unpaid').toUpperCase()}</blockquote>
+
+<pre>
+METRIC          VALUE
+---------------------------------------
+Bill Number     #${inv.bill_number}
+Vehicle Plate   ${inv.vehicle_number || 'N/A'}
+Final Net       ₹ ${Math.round(Number(inv.net_amount) || 0).toLocaleString('en-IN')}
+Payment Status  ${(inv.payment_status || 'unpaid').toUpperCase()}
+Branch / Place  ${raw.place || 'Not Assigned'}
+Bill Date       ${inv.bill_date || 'N/A'}
+Trip Distance   ${distance > 0 ? `${distance.toLocaleString('en-IN')} KM` : '0 KM'}
+Driver Name     ${trip.driver || raw.driverName || 'None'}
+</pre>
 
 ${
   isAuthed
     ? `<i>🔓 Edit Mode Active (${Math.floor(remaining / 60)}m ${remaining % 60}s remaining). Reply with changes to update.</i>`
-    : `<i>🔒 Read-Only Mode. To edit this bill, send <code>/unlock YOUR_PASSWORD</code> to start the 5-minute timer.</i>`
+    : `<i>🔒 Read-Only Mode. To edit this bill, send <code>/unlock YOUR_PASSWORD</code>.</i>`
 }
 `;
-          await sendTelegramMessage(chatId, msg);
+          await sendTelegramMessage(chatId, msg, fullKeyboard);
           return NextResponse.json({ ok: true });
         }
       }
 
+      // 2. Invoices List: "📋 Invoices", "/bills", "recent bills", "final price"
       if (
+        text === '📋 Invoices' ||
+        text === '/bills' ||
         lower.includes('recent') ||
-        lower.includes('bill number') ||
         lower.includes('final price') ||
         lower.includes('status') ||
-        lower.includes('bills')
+        (lower.includes('bill') && !lower.includes('pending'))
       ) {
-        let reply = '<b>Recent Bills & Final Prices:</b>\n\n';
+        let reply = `<b>📋 Recent Invoices & Billing Overview</b>\n<blockquote>Showing latest bills. Tap any button below to view full trip details.</blockquote>\n\n`;
+        reply += `<pre>\nBILL   VEHICLE       NET (₹)   STATUS\n---------------------------------------\n`;
         (recentInvoices || []).slice(0, 6).forEach((b: any) => {
-          const raw = b.raw_data || {};
-          reply += `• <b>Bill #${b.bill_number}</b> (${b.vehicle_number || 'N/A'})\n`;
-          reply += `  Final Price: <b>Rs.${Number(b.net_amount || 0).toLocaleString('en-IN')}</b>\n`;
-          reply += `  Status: <b>${(b.payment_status || 'unpaid').toUpperCase()}</b>\n`;
-          if (raw.place) reply += `  Branch: ${raw.place}\n`;
-          reply += `  Date: ${b.bill_date || 'N/A'}\n\n`;
+          const billStr = `#${b.bill_number}`.padEnd(6);
+          const vehStr = (b.vehicle_number || 'N/A').padEnd(14);
+          const netStr = `${Math.round(Number(b.net_amount) || 0).toLocaleString('en-IN')}`.padStart(8);
+          const statusStr = (b.payment_status || 'unpaid').toUpperCase() === 'PAID' ? 'PAID' : 'PEND';
+          reply += `${billStr}${vehStr}₹${netStr}  ${statusStr}\n`;
         });
-        await sendTelegramMessage(chatId, reply);
+        reply += `</pre>`;
+
+        const inlineButtons = (recentInvoices || []).slice(0, 6).map((b: any) => [
+          {
+            text: `🔍 Bill #${b.bill_number} • ${b.vehicle_number} (₹${Math.round(Number(b.net_amount)).toLocaleString('en-IN')})`,
+            callback_data: `bill_${b.bill_number}`,
+          },
+        ]);
+
+        await sendTelegramMessage(chatId, reply, { inline_keyboard: inlineButtons });
+        return NextResponse.json({ ok: true });
+      }
+
+      // 3. Pending Bills: "⏳ Pending Bills", "/pending", "unpaid"
+      if (text === '⏳ Pending Bills' || text === '/pending' || lower.includes('pending') || lower.includes('unpaid')) {
+        const pending = (recentInvoices || []).filter(
+          (b: any) => (b.payment_status || 'unpaid').toLowerCase() !== 'paid'
+        );
+
+        if (pending.length === 0) {
+          await sendTelegramMessage(
+            chatId,
+            '<b>⏳ Pending Bills</b>\n<blockquote>All bills in your database are marked as <b>PAID</b>. Zero outstanding receivables!</blockquote>',
+            fullKeyboard
+          );
+          return NextResponse.json({ ok: true });
+        }
+
+        let totalPendingAmt = 0;
+        let reply = `<b>⏳ Pending Invoices Awaiting Payment (${pending.length})</b>\n<blockquote>Outstanding receivables awaiting clearance</blockquote>\n\n`;
+        reply += `<pre>\nBILL   VEHICLE       AMOUNT (₹)  BRANCH\n---------------------------------------\n`;
+        pending.slice(0, 8).forEach((b: any) => {
+          const raw = b.raw_data || {};
+          const amt = Math.round(Number(b.net_amount) || 0);
+          totalPendingAmt += amt;
+          const billStr = `#${b.bill_number}`.padEnd(6);
+          const vehStr = (b.vehicle_number || 'N/A').padEnd(14);
+          const amtStr = `${amt.toLocaleString('en-IN')}`.padStart(8);
+          const placeStr = (raw.place || '-').slice(0, 8);
+          reply += `${billStr}${vehStr}₹${amtStr}  ${placeStr}\n`;
+        });
+        reply += `</pre>\n<b>Total Outstanding: ₹ ${totalPendingAmt.toLocaleString('en-IN')}</b>`;
+
+        const inlineButtons = pending.slice(0, 6).map((b: any) => [
+          {
+            text: `🔍 View Unpaid Bill #${b.bill_number} (₹${Math.round(Number(b.net_amount)).toLocaleString('en-IN')})`,
+            callback_data: `bill_${b.bill_number}`,
+          },
+        ]);
+
+        await sendTelegramMessage(chatId, reply, { inline_keyboard: inlineButtons });
+        return NextResponse.json({ ok: true });
+      }
+
+      // 4. Fleet KMs: "🚚 Fleet KMs", "/fleet", "odometer"
+      if (text === '🚚 Fleet KMs' || text === '/fleet' || lower.includes('fleet') || lower.includes('odometer')) {
+        let reply = `<b>🚚 Active Fleet Vehicles (${vehicles?.length || 0})</b>\n<blockquote>Recorded odometer readings and active status</blockquote>\n\n`;
+        reply += `<pre>\nVEHICLE NUMBER      ODOMETER KM   STATUS\n----------------------------------------\n`;
+        (vehicles || []).slice(0, 10).forEach((v: any) => {
+          const vehStr = (v.registration_number || '').padEnd(19);
+          const kmStr = `${Number(v.current_km || 0).toLocaleString('en-IN')} KM`.padEnd(13);
+          reply += `${vehStr}${kmStr}ACTIVE\n`;
+        });
+        reply += `</pre>`;
+        await sendTelegramMessage(chatId, reply, fullKeyboard);
+        return NextResponse.json({ ok: true });
+      }
+
+      // 5. Fuel Records: "⛽ Fuel Records", "/fuel", "diesel", "bunk"
+      if (text === '⛽ Fuel Records' || text === '/fuel' || lower.includes('fuel') || lower.includes('diesel')) {
+        let totalFuelAmt = 0;
+        let totalLiters = 0;
+        let reply = `<b>⛽ Fuel Management & Bunk Logs</b>\n<blockquote>Recent diesel refills logged across bunks</blockquote>\n\n`;
+        reply += `<pre>\nVEHICLE        BUNK      LITERS  COST (₹)\n----------------------------------------\n`;
+        (fuelEntries || []).slice(0, 8).forEach((f: any) => {
+          const cost = Number(f.total_amount) || 0;
+          const ltr = Number(f.liters) || 0;
+          totalFuelAmt += cost;
+          totalLiters += ltr;
+          const vehStr = (f.vehicle_number || '').padEnd(15);
+          const bunkStr = (f.bunk_name || 'Bunk').slice(0, 9).padEnd(10);
+          const ltrStr = `${ltr.toFixed(0)}L`.padEnd(6);
+          const costStr = `₹${Math.round(cost).toLocaleString('en-IN')}`;
+          reply += `${vehStr}${bunkStr}${ltrStr}${costStr}\n`;
+        });
+        reply += `</pre>\n<b>Recent Total: ${totalLiters.toFixed(0)} L (₹ ${Math.round(totalFuelAmt).toLocaleString('en-IN')})</b>`;
+        await sendTelegramMessage(chatId, reply, fullKeyboard);
+        return NextResponse.json({ ok: true });
+      }
+
+      // 6. Maintenance: "🔧 Maintenance", "/maintenance", "repair", "service"
+      if (
+        text === '🔧 Maintenance' ||
+        text === '/maintenance' ||
+        lower.includes('maintenance') ||
+        lower.includes('repair') ||
+        lower.includes('service')
+      ) {
+        let totalMaint = 0;
+        let reply = `<b>🔧 Repairs & Maintenance Log</b>\n<blockquote>Workshop services and component overhauls</blockquote>\n\n`;
+        reply += `<pre>\nVEHICLE        CATEGORY       COST (₹)\n----------------------------------------\n`;
+        (maintenanceEntries || []).slice(0, 8).forEach((m: any) => {
+          const cost = Number(m.amount) || 0;
+          totalMaint += cost;
+          const vehStr = (m.vehicle_number || '').padEnd(15);
+          const catStr = (m.category || 'General').slice(0, 14).padEnd(15);
+          const costStr = `₹${Math.round(cost).toLocaleString('en-IN')}`;
+          reply += `${vehStr}${catStr}${costStr}\n`;
+        });
+        reply += `</pre>\n<b>Total Recent Maintenance: ₹ ${Math.round(totalMaint).toLocaleString('en-IN')}</b>`;
+        await sendTelegramMessage(chatId, reply, fullKeyboard);
+        return NextResponse.json({ ok: true });
+      }
+
+      // 7. Expenses: "💸 Expenses", "/expenses", "toll", "fastag"
+      if (
+        text === '💸 Expenses' ||
+        text === '/expenses' ||
+        lower.includes('expense') ||
+        lower.includes('toll') ||
+        lower.includes('fastag')
+      ) {
+        let totalExp = 0;
+        let reply = `<b>💸 Fleet & Business Expenses</b>\n<blockquote>Tolls, FASTag, driver bata, loading expenditure</blockquote>\n\n`;
+        reply += `<pre>\nCATEGORY       VEHICLE       AMOUNT (₹)\n----------------------------------------\n`;
+        (expenseEntries || []).slice(0, 8).forEach((e: any) => {
+          const amt = Number(e.amount) || 0;
+          totalExp += amt;
+          const catStr = (e.category || 'General').slice(0, 14).padEnd(15);
+          const vehStr = (e.vehicle_number || 'General').slice(0, 13).padEnd(14);
+          const amtStr = `₹${Math.round(amt).toLocaleString('en-IN')}`;
+          reply += `${catStr}${vehStr}${amtStr}\n`;
+        });
+        reply += `</pre>\n<b>Total Recent Expenses: ₹ ${Math.round(totalExp).toLocaleString('en-IN')}</b>`;
+        await sendTelegramMessage(chatId, reply, fullKeyboard);
+        return NextResponse.json({ ok: true });
+      }
+
+      // 8. Drivers: "👨‍✈️ Drivers", "/drivers"
+      if (text === '👨‍✈️ Drivers' || text === '/drivers' || lower.includes('driver')) {
+        let reply = `<b>👨‍✈️ Registered Drivers Directory (${drivers?.length || 0})</b>\n<blockquote>Active drivers, mobile contacts and rates</blockquote>\n\n`;
+        reply += `<pre>\nDRIVER NAME    MOBILE       RATE/KM   STATUS\n--------------------------------------------\n`;
+        (drivers || []).slice(0, 10).forEach((d: any) => {
+          const nameStr = (d.name || '').slice(0, 14).padEnd(15);
+          const phoneStr = (d.phone || '-').slice(0, 11).padEnd(13);
+          const rateStr = `₹${Number(d.rate_per_km || 2.5).toFixed(1)}`.padEnd(9);
+          const statusStr = (d.status || 'active').toUpperCase();
+          reply += `${nameStr}${phoneStr}${rateStr}${statusStr}\n`;
+        });
+        reply += `</pre>`;
+        await sendTelegramMessage(chatId, reply, fullKeyboard);
+        return NextResponse.json({ ok: true });
+      }
+
+      // 9. Profit & Loss: "📊 Profit & Loss", "/pnl"
+      if (text === '📊 Profit & Loss' || text === '/pnl' || lower.includes('profit') || lower.includes('pnl')) {
+        let netProfit = 0;
+        let reply = `<b>📊 Profit & Loss Fleet Summary</b>\n<blockquote>Net profit = Revenue minus Fuel, Maint & Expenses</blockquote>\n\n`;
+        reply += `<pre>\nVEHICLE        REVENUE (₹)   PROFIT (₹)\n----------------------------------------\n`;
+        (pnlSummary || []).slice(0, 8).forEach((p: any) => {
+          const rev = Number(p.total_revenue) || 0;
+          const prof = Number(p.net_profit) || 0;
+          netProfit += prof;
+          const vehStr = (p.registration_number || '').padEnd(15);
+          const revStr = `${Math.round(rev).toLocaleString('en-IN')}`.padStart(10);
+          const profStr = `${Math.round(prof).toLocaleString('en-IN')}`.padStart(10);
+          reply += `${vehStr}₹${revStr}  ₹${profStr}\n`;
+        });
+        reply += `</pre>\n<b>Total Fleet Operating Profit: ₹ ${Math.round(netProfit).toLocaleString('en-IN')}</b>`;
+        await sendTelegramMessage(chatId, reply, fullKeyboard);
         return NextResponse.json({ ok: true });
       }
     }
 
-    // Authorized Edit Execution via Gemini
+    // Authorized Edit Execution or Complex Intelligence via Gemini
     const contextPayload = `
-CURRENT DATABASE STATE:
-Recent Bills in System:
-${JSON.stringify(recentInvoices || [], null, 2)}
+COMPLETE ENTERPRISE DATABASE STATE ACROSS ALL 7 CATEGORIES:
 
-USER MESSAGE IN TELEGRAM (EDIT AUTHORIZED):
+1. Invoices & Billing:
+${JSON.stringify((recentInvoices || []).slice(0, 10), null, 2)}
+
+2. Active Fleet Vehicles:
+${JSON.stringify((vehicles || []).slice(0, 15), null, 2)}
+
+3. Registered Drivers:
+${JSON.stringify((drivers || []).slice(0, 15), null, 2)}
+
+4. Fuel Management Entries:
+${JSON.stringify((fuelEntries || []).slice(0, 10), null, 2)}
+
+5. Maintenance & Workshop Entries:
+${JSON.stringify((maintenanceEntries || []).slice(0, 10), null, 2)}
+
+6. Fleet & Business Expenses:
+${JSON.stringify((expenseEntries || []).slice(0, 10), null, 2)}
+
+7. Profit & Loss Summaries:
+${JSON.stringify((pnlSummary || []).slice(0, 10), null, 2)}
+
+USER INSTRUCTION (${isAuthed ? 'EDIT AUTHORIZED (5-MIN SESSION)' : 'READ-ONLY INQUIRY'}):
 ${text}
 `;
 
@@ -398,20 +594,15 @@ ${text}
       console.warn('Telegram Gemini AI call failed:', aiErr.message);
       const fallbackMsg = `
 <b>AUS Transport Assistant</b>
+<blockquote>The AI model is temporarily occupied. Here is your quick menu:</blockquote>
 
-I could not connect to the AI model at this moment.
-
-You can still query your database directly:
-• /bills - View recent bills
-• /pending - View pending payments
-• /fleet - View vehicle distance
-• Type any bill number (e.g. <code>bill 437</code>) to view its details.
+Use the buttons below to access <b>Invoices</b>, <b>Pending Bills</b>, <b>Fuel</b>, <b>Maintenance</b>, <b>Expenses</b>, <b>Drivers</b>, and <b>P&L</b>.
 `;
-      await sendTelegramMessage(chatId, fallbackMsg);
+      await sendTelegramMessage(chatId, fallbackMsg, fullKeyboard);
       return NextResponse.json({ ok: true });
     }
 
-    if (updateAction && updateAction.billNumber) {
+    if (isAuthed && updateAction && updateAction.billNumber) {
       const targetBillNumber = String(updateAction.billNumber);
       const { data: existingRows } = await supabase
         .from('invoices')
@@ -470,24 +661,27 @@ You can still query your database directly:
           .eq('bill_number', targetBillNumber);
 
         const confirmMsg = `
-<b>Successfully Updated Bill #${targetBillNumber}!</b>
+<b>✅ Successfully Updated Bill #${targetBillNumber}!</b>
+<blockquote>Saved directly to Supabase and live on your website dashboard.</blockquote>
 
-• <b>Vehicle:</b> ${newVehicle}
-• <b>Driver:</b> ${firstTrip.driver || 'None'}
-• <b>Distance:</b> ${Math.max(0, closing - starting).toLocaleString('en-IN')} KM
-• <b>Final Net Amount:</b> Rs.${Math.round(netAmount).toLocaleString('en-IN')}
-• <b>Branch:</b> ${newPlace || 'None'}
-• <b>Status:</b> ${newStatus.toUpperCase()}
-
-<i>Saved to Supabase and live on your website.</i>
+<pre>
+FIELD           VALUE
+---------------------------------------
+Vehicle Plate   ${newVehicle}
+Driver Name     ${firstTrip.driver || 'None'}
+Trip Distance   ${Math.max(0, closing - starting).toLocaleString('en-IN')} KM
+Final Net       ₹ ${Math.round(netAmount).toLocaleString('en-IN')}
+Branch / Place  ${newPlace || 'None'}
+Payment Status  ${newStatus.toUpperCase()}
+</pre>
 `;
-        await sendTelegramMessage(chatId, confirmMsg);
+        await sendTelegramMessage(chatId, confirmMsg, fullKeyboard);
         return NextResponse.json({ ok: true });
       }
     }
 
     const cleanDisplay = aiResponse.replace(/```json[\s\S]*?```/g, '').trim();
-    await sendTelegramMessage(chatId, cleanDisplay || 'Processed.');
+    await sendTelegramMessage(chatId, cleanDisplay || 'Processed successfully.', fullKeyboard);
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {

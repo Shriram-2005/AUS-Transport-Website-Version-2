@@ -39,124 +39,303 @@ interface ChatMessage {
   };
 }
 
+function InlineFormatted({ text }: { text: string }) {
+  if (!text) return null;
+
+  // Split by inline code `...`, bold **...**, italic *...*
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g);
+
+  return (
+    <>
+      {parts.map((part, idx) => {
+        if (!part) return null;
+        if (part.startsWith('`') && part.endsWith('`')) {
+          const code = part.slice(1, -1);
+          if (code === 'PAID') {
+            return (
+              <span
+                key={idx}
+                className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+              >
+                PAID
+              </span>
+            );
+          }
+          if (code === 'PENDING') {
+            return (
+              <span
+                key={idx}
+                className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+              >
+                PENDING
+              </span>
+            );
+          }
+          if (code === 'ACTIVE') {
+            return (
+              <span
+                key={idx}
+                className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+              >
+                ACTIVE
+              </span>
+            );
+          }
+          return (
+            <code
+              key={idx}
+              className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-800 font-mono text-[10px] text-blue-700 dark:text-blue-300 border border-gray-200/80 dark:border-zinc-700"
+            >
+              {code}
+            </code>
+          );
+        }
+
+        if (part.startsWith('**') && part.endsWith('**')) {
+          const bold = part.slice(2, -2);
+          if (bold.includes('₹') || bold.includes('Rs.')) {
+            return (
+              <strong
+                key={idx}
+                className="font-bold text-emerald-600 dark:text-emerald-400"
+              >
+                {bold}
+              </strong>
+            );
+          }
+          return (
+            <strong key={idx} className="font-bold text-gray-950 dark:text-white">
+              {bold}
+            </strong>
+          );
+        }
+
+        if (part.startsWith('*') && part.endsWith('*')) {
+          return (
+            <em key={idx} className="italic text-gray-600 dark:text-zinc-300">
+              {part.slice(1, -1)}
+            </em>
+          );
+        }
+
+        if (part.includes('₹') || part.includes('Rs.')) {
+          return (
+            <span key={idx} className="font-semibold text-emerald-600 dark:text-emerald-400">
+              {part}
+            </span>
+          );
+        }
+
+        return <span key={idx}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+type ContentBlock =
+  | { type: 'header'; level: number; text: string }
+  | { type: 'quote'; lines: string[] }
+  | { type: 'table'; headers: string[]; rows: string[][] }
+  | { type: 'bullet'; text: string }
+  | { type: 'code'; code: string }
+  | { type: 'paragraph'; text: string };
+
+function parseMarkdownBlocks(rawText: string): ContentBlock[] {
+  const lines = rawText.split('\n');
+  const blocks: ContentBlock[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      i++;
+      continue;
+    }
+
+    // Code block
+    if (trimmed.startsWith('```')) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++;
+      blocks.push({ type: 'code', code: codeLines.join('\n') });
+      continue;
+    }
+
+    // Table block (starts and ends with |)
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+        tableLines.push(lines[i].trim());
+        i++;
+      }
+
+      if (tableLines.length >= 2) {
+        const parseRow = (r: string) =>
+          r
+            .split('|')
+            .slice(1, -1)
+            .map((c) => c.trim());
+
+        const headers = parseRow(tableLines[0]);
+        const dataRows = tableLines.slice(1).filter((r) => !r.match(/^\|(?:\s*:?-+:?\s*\|)+$/));
+        const rows = dataRows.map(parseRow);
+
+        blocks.push({ type: 'table', headers, rows });
+        continue;
+      }
+    }
+
+    // Blockquote
+    if (trimmed.startsWith('>')) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('>')) {
+        quoteLines.push(lines[i].trim().replace(/^>\s*/, ''));
+        i++;
+      }
+      blocks.push({ type: 'quote', lines: quoteLines });
+      continue;
+    }
+
+    // Headers (#, ##, ###)
+    if (trimmed.startsWith('#')) {
+      const match = trimmed.match(/^(#{1,6})\s+(.*)$/);
+      if (match) {
+        blocks.push({
+          type: 'header',
+          level: match[1].length,
+          text: match[2],
+        });
+        i++;
+        continue;
+      }
+    }
+
+    // Bullet line
+    if (trimmed.startsWith('- ') || trimmed.startsWith('• ') || trimmed.startsWith('* ')) {
+      blocks.push({
+        type: 'bullet',
+        text: trimmed.replace(/^[-•*]\s+/, ''),
+      });
+      i++;
+      continue;
+    }
+
+    // Regular paragraph
+    blocks.push({ type: 'paragraph', text: line });
+    i++;
+  }
+
+  return blocks;
+}
+
 /**
- * Enhanced Message Formatter for AI FAB
- * Formats markdown headers, bullets, bill cards, and badges cleanly
+ * Enhanced Visual Content Formatter for AI FAB
+ * Renders full Markdown tables, blockquotes, code blocks, headers, and badges
  */
 function FormattedAiContent({ text }: { text: string }) {
-  const lines = text.split('\n');
+  const blocks = parseMarkdownBlocks(text);
 
   return (
     <div className="space-y-2 text-xs leading-relaxed text-gray-800 dark:text-zinc-200">
-      {lines.map((line, idx) => {
-        const trimmed = line.trim();
-        if (!trimmed) {
-          return <div key={idx} className="h-1" />;
-        }
-
-        // Header 3
-        if (trimmed.startsWith('### ')) {
-          return (
-            <h4
-              key={idx}
-              className="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 pt-1 pb-0.5 border-b border-gray-200 dark:border-zinc-800"
-            >
-              {trimmed.replace('### ', '')}
-            </h4>
-          );
-        }
-
-        // Bill Header line: **Bill #439** ...
-        if (trimmed.startsWith('• **Bill #') || trimmed.startsWith('**Bill #')) {
-          const clean = trimmed.replace(/^[•*]+\s*/, '');
+      {blocks.map((block, idx) => {
+        if (block.type === 'header') {
           return (
             <div
               key={idx}
-              className="mt-2.5 pt-2 border-t border-gray-200/80 dark:border-zinc-700/80 first:border-t-0 first:pt-0"
+              className="pt-2 pb-1 border-b border-gray-200 dark:border-zinc-800 flex items-center gap-2 first:pt-0"
             >
-              <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                <Receipt className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                <span>{clean.replace(/\*\*/g, '')}</span>
-              </div>
+              <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
+                <InlineFormatted text={block.text} />
+              </h4>
             </div>
           );
         }
 
-        // Bullet line
-        if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
-          const content = trimmed.replace(/^[-•]\s*/, '');
-          const parts = content.split(/(\*\*.*?\*\*)/g);
-
+        if (block.type === 'quote') {
           return (
-            <div key={idx} className="flex items-start gap-2 pl-2">
+            <blockquote
+              key={idx}
+              className="my-2 pl-3 py-2 border-l-3 border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 rounded-r-xl text-blue-950 dark:text-blue-200 text-[11px] leading-relaxed shadow-2xs space-y-1"
+            >
+              {block.lines.map((ql, qIdx) => (
+                <p key={qIdx}>
+                  <InlineFormatted text={ql} />
+                </p>
+              ))}
+            </blockquote>
+          );
+        }
+
+        if (block.type === 'table') {
+          return (
+            <div
+              key={idx}
+              className="my-2.5 overflow-x-auto rounded-xl border border-gray-200 dark:border-zinc-700/80 shadow-2xs scrollbar-thin"
+            >
+              <table className="w-full text-left text-[11px] border-collapse min-w-[340px]">
+                <thead className="bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 font-bold border-b border-gray-200 dark:border-zinc-700">
+                  <tr>
+                    {block.headers.map((h, hIdx) => (
+                      <th key={hIdx} className="px-2.5 py-1.5 whitespace-nowrap">
+                        <InlineFormatted text={h} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900">
+                  {block.rows.map((row, rIdx) => (
+                    <tr
+                      key={rIdx}
+                      className="hover:bg-blue-50/40 dark:hover:bg-zinc-800/50 odd:bg-gray-50/30 dark:odd:bg-zinc-900/50 transition-colors"
+                    >
+                      {row.map((cell, cIdx) => (
+                        <td
+                          key={cIdx}
+                          className="px-2.5 py-1.5 whitespace-nowrap text-gray-800 dark:text-zinc-200"
+                        >
+                          <InlineFormatted text={cell} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        if (block.type === 'bullet') {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1.5 py-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0" />
-              <div className="flex-1">
-                {parts.map((p, pIdx) => {
-                  if (p.startsWith('**') && p.endsWith('**')) {
-                    const boldText = p.replace(/\*\*/g, '');
-                    return (
-                      <span key={pIdx} className="font-semibold text-gray-900 dark:text-white">
-                        {boldText}
-                      </span>
-                    );
-                  }
-                  if (p.includes('₹') || p.includes('Rs.')) {
-                    return (
-                      <span key={pIdx} className="font-semibold text-emerald-600 dark:text-emerald-400">
-                        {p}
-                      </span>
-                    );
-                  }
-                  if (p.includes('PAID')) {
-                    return (
-                      <span
-                        key={pIdx}
-                        className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300"
-                      >
-                        PAID
-                      </span>
-                    );
-                  }
-                  if (p.includes('PENDING') || p.includes('NOT RECEIVED') || p.includes('UNPAID')) {
-                    return (
-                      <span
-                        key={pIdx}
-                        className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300"
-                      >
-                        PENDING
-                      </span>
-                    );
-                  }
-                  return <span key={pIdx}>{p}</span>;
-                })}
+              <div className="flex-1 text-gray-800 dark:text-zinc-200">
+                <InlineFormatted text={block.text} />
               </div>
             </div>
           );
         }
 
-        // Generic italic or note line
-        if (trimmed.startsWith('*') && trimmed.endsWith('*')) {
+        if (block.type === 'code') {
           return (
-            <p key={idx} className="text-[11px] text-gray-500 dark:text-zinc-400 italic">
-              {trimmed.replace(/\*/g, '')}
-            </p>
+            <pre
+              key={idx}
+              className="my-2 p-2.5 rounded-xl bg-gray-950 text-gray-100 overflow-x-auto text-[11px] font-mono border border-gray-800"
+            >
+              <code>{block.code}</code>
+            </pre>
           );
         }
 
-        // Standard prose line with bold parsing
-        const parts = line.split(/(\*\*.*?\*\*)/g);
         return (
-          <p key={idx}>
-            {parts.map((p, pIdx) => {
-              if (p.startsWith('**') && p.endsWith('**')) {
-                return (
-                  <strong key={pIdx} className="font-bold text-gray-900 dark:text-zinc-100">
-                    {p.replace(/\*\*/g, '')}
-                  </strong>
-                );
-              }
-              return <span key={pIdx}>{p}</span>;
-            })}
+          <p key={idx} className="py-0.5 text-gray-800 dark:text-zinc-200">
+            <InlineFormatted text={block.text} />
           </p>
         );
       })}
@@ -181,7 +360,7 @@ export function AiAssistantFab() {
     {
       id: 'welcome',
       sender: 'ai',
-      text: '### Welcome to AUS AI Assistant\n\nBy default, I am in **Read-Only Mode** to fetch details safely.\n\n• **Ask me:** *"recent bill number and its final price and status"*\n• **Pending:** *"pending bills awaiting payment"*\n• **Vehicles:** *"fleet odometer status"*\n\n*To edit or update any bill details, unlock edit mode with your Supabase login password (grants a strict 5-minute session).*',
+      text: '### Welcome to AUS Transport AI Assistant\n\n> Complete visibility across all 7 operational categories in your database.\n\n| Category | Available Data |\n| :--- | :--- |\n| **Invoices** | Bill numbers, trip legs, TDS, payments, branches |\n| **Fleet** | Odometer KM, vehicle registration, active trucks |\n| **Drivers** | Driver directory, phone numbers, KM rates |\n| **Fuel** | Bunk names, liters, fuel rates, total costs |\n| **Maintenance** | Workshop repairs, service categories, costs |\n| **Expenses** | FASTag, tolls, driver bata, loading charges |\n| **P&L** | Revenue vs. fuel & operating profit |\n\n*Read-Only mode is active. To make edits, unlock with your Supabase login password.*',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -349,10 +528,14 @@ export function AiAssistantFab() {
   };
 
   const quickPrompts = [
-    'Recent bill number and final price and status',
-    'Pending bills awaiting payment',
-    'Fleet vehicles distance',
-    'Total revenue this month',
+    { label: '📋 Invoices', query: 'Show recent invoices with final price and status' },
+    { label: '⏳ Pending Bills', query: 'List pending unpaid bills awaiting payment' },
+    { label: '🚚 Fleet KMs', query: 'Show active fleet vehicles with current odometer KM' },
+    { label: '⛽ Fuel Records', query: 'Show fuel management logs and bunk diesel refills' },
+    { label: '🔧 Maintenance', query: 'Show vehicle repairs and maintenance logs' },
+    { label: '💸 Expenses', query: 'Show fleet expenses including FASTag, tolls, and loading' },
+    { label: '👨‍✈️ Drivers', query: 'Show drivers directory with mobile numbers and rates' },
+    { label: '📊 Profit & Loss', query: 'Show profit and loss overview across fleet vehicles' },
   ];
 
   return (
@@ -471,11 +654,11 @@ export function AiAssistantFab() {
               <button
                 key={idx}
                 type="button"
-                onClick={() => handleSendMessage(p)}
+                onClick={() => handleSendMessage(p.query)}
                 disabled={isLoading}
-                className="px-2.5 py-1 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700/80 text-[11px] font-medium text-gray-600 dark:text-zinc-300 hover:border-blue-300 dark:hover:border-blue-700 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap transition-colors cursor-pointer disabled:opacity-50"
+                className="px-2.5 py-1 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700/80 text-[11px] font-medium text-gray-700 dark:text-zinc-200 hover:border-blue-400 dark:hover:border-blue-600 hover:text-blue-600 dark:hover:text-blue-400 whitespace-nowrap transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
               >
-                {p}
+                {p.label}
               </button>
             ))}
           </div>
