@@ -386,6 +386,112 @@ export function AiAssistantFab() {
   const [showPasswordText, setShowPasswordText] = useState(false);
   const [authError, setAuthError] = useState('');
 
+  // Draggable FAB state & position persistence
+  const [fabPosition, setFabPosition] = useState<{ x: number; y: number } | null>(null);
+  const isDraggingFabRef = useRef(false);
+  const dragStartRef = useRef<{ startX: number; startY: number; initialX: number; initialY: number }>({
+    startX: 0,
+    startY: 0,
+    initialX: 0,
+    initialY: 0,
+  });
+  const hasMovedRef = useRef(false);
+
+  // Restore saved FAB position or set sensible default
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = localStorage.getItem('aus_ai_fab_pos');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+          const clampedX = Math.min(Math.max(12, parsed.x), window.innerWidth - 72);
+          const clampedY = Math.min(Math.max(12, parsed.y), window.innerHeight - 72);
+          setFabPosition({ x: clampedX, y: clampedY });
+          return;
+        }
+      }
+    } catch {}
+
+    const defaultX = Math.max(12, window.innerWidth - 150);
+    const defaultY = Math.max(12, window.innerHeight - 80);
+    setFabPosition({ x: defaultX, y: defaultY });
+  }, []);
+
+  // Keep FAB within bounds on viewport resize
+  useEffect(() => {
+    const handleResize = () => {
+      setFabPosition((prev) => {
+        if (!prev) return prev;
+        const clampedX = Math.min(Math.max(12, prev.x), window.innerWidth - 72);
+        const clampedY = Math.min(Math.max(12, prev.y), window.innerHeight - 72);
+        return { x: clampedX, y: clampedY };
+      });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleDragStart = (clientX: number, clientY: number) => {
+    if (!fabPosition) return;
+    isDraggingFabRef.current = true;
+    hasMovedRef.current = false;
+    dragStartRef.current = {
+      startX: clientX,
+      startY: clientY,
+      initialX: fabPosition.x,
+      initialY: fabPosition.y,
+    };
+  };
+
+  const handleDragMove = (clientX: number, clientY: number) => {
+    if (!isDraggingFabRef.current) return;
+    const deltaX = clientX - dragStartRef.current.startX;
+    const deltaY = clientY - dragStartRef.current.startY;
+
+    if (Math.hypot(deltaX, deltaY) > 6) {
+      hasMovedRef.current = true;
+    }
+
+    const nextX = Math.min(Math.max(12, dragStartRef.current.initialX + deltaX), window.innerWidth - 72);
+    const nextY = Math.min(Math.max(12, dragStartRef.current.initialY + deltaY), window.innerHeight - 72);
+
+    setFabPosition({ x: nextX, y: nextY });
+  };
+
+  const handleDragEnd = () => {
+    if (!isDraggingFabRef.current) return;
+    isDraggingFabRef.current = false;
+    if (hasMovedRef.current && fabPosition) {
+      try {
+        localStorage.setItem('aus_ai_fab_pos', JSON.stringify(fabPosition));
+      } catch {}
+    }
+  };
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => handleDragMove(e.clientX, e.clientY);
+    const onMouseUp = () => handleDragEnd();
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        handleDragMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+    const onTouchEnd = () => handleDragEnd();
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [fabPosition]);
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
@@ -580,8 +686,15 @@ export function AiAssistantFab() {
 
   return (
     <>
-      {/* FLOATING ACTION BUTTON - Offset to right-24 so it NEVER overlaps the invoice '+' action button */}
-      <div className="fixed bottom-6 right-24 sm:right-24 z-40 flex items-center gap-2 group">
+      {/* FLOATING ACTION BUTTON - Draggable and repositionable anywhere on screen */}
+      <div
+        style={
+          fabPosition
+            ? { left: `${fabPosition.x}px`, top: `${fabPosition.y}px` }
+            : { bottom: '1.5rem', right: '6rem' }
+        }
+        className="fixed z-40 flex items-center gap-2 select-none touch-none group"
+      >
         {!isOpen && (
           <div className="hidden sm:flex items-center px-3 py-1.5 rounded-full bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-md text-xs font-semibold text-gray-700 dark:text-zinc-200 pointer-events-none transition-all opacity-0 group-hover:opacity-100 -translate-x-1">
             <span
@@ -591,15 +704,29 @@ export function AiAssistantFab() {
             />
             {isEditAuthorized
               ? `Edit Active (${formatTimer(secondsRemaining)})`
-              : 'AI Assistant (Read-Only)'}
+              : 'AI Assistant (Drag to place)'}
           </div>
         )}
 
         <button
           type="button"
-          onClick={() => setIsOpen((prev) => !prev)}
-          aria-label="Toggle AI Assistant"
-          className="relative w-14 h-14 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 text-white shadow-xl hover:shadow-2xl flex items-center justify-center transition-all transform hover:scale-105 active:scale-95 cursor-pointer ring-4 ring-blue-500/20"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            handleDragStart(e.clientX, e.clientY);
+          }}
+          onTouchStart={(e) => {
+            if (e.touches.length > 0) {
+              handleDragStart(e.touches[0].clientX, e.touches[0].clientY);
+            }
+          }}
+          onClick={() => {
+            if (!hasMovedRef.current) {
+              setIsOpen((prev) => !prev);
+            }
+          }}
+          aria-label="Toggle AI Assistant (Drag anywhere)"
+          title="Click to toggle, drag to reposition anywhere on screen"
+          className="relative w-14 h-14 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 text-white shadow-xl hover:shadow-2xl flex items-center justify-center transition-transform transform active:scale-95 cursor-grab active:cursor-grabbing ring-4 ring-blue-500/20"
         >
           {isOpen ? (
             <X className="w-6 h-6" />
@@ -618,7 +745,25 @@ export function AiAssistantFab() {
 
       {/* CHAT POPUP DRAWER */}
       {isOpen && (
-        <div className="fixed bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[460px] h-[620px] max-h-[85vh] rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200">
+        <div
+          style={
+            typeof window !== 'undefined' && window.innerWidth >= 640 && fabPosition
+              ? {
+                  left: `${
+                    fabPosition.x > window.innerWidth / 2
+                      ? Math.max(16, Math.min(fabPosition.x - 410, window.innerWidth - 470))
+                      : Math.min(window.innerWidth - 470, Math.max(16, fabPosition.x))
+                  }px`,
+                  top: `${
+                    fabPosition.y > 640
+                      ? Math.max(16, fabPosition.y - 630)
+                      : Math.min(window.innerHeight - 630, Math.max(16, fabPosition.y + 64))
+                  }px`,
+                }
+              : undefined
+          }
+          className="fixed bottom-4 sm:bottom-auto left-4 sm:left-auto right-4 sm:right-auto z-50 w-[calc(100vw-2rem)] sm:w-[460px] h-[620px] max-h-[85vh] rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200"
+        >
           {/* Header */}
           <div className="px-5 py-3.5 border-b border-gray-100 dark:border-zinc-800 bg-gradient-to-r from-blue-50/70 via-indigo-50/30 to-transparent dark:from-zinc-900 dark:to-zinc-900/40 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">

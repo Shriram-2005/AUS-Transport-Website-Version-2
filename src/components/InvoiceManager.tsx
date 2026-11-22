@@ -273,7 +273,7 @@ export function InvoiceManager() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveIndicator, setSaveIndicator] = useState<'saved' | 'saving' | null>(null);
-  const [fabOpen, setFabOpen] = useState(true);
+  const [fabOpen, setFabOpen] = useState(false);
 
   // Refs for seamless background auto-save and dirty-state tracking without typing interruption
   const currentBillRef = useRef<BillData>(currentBill);
@@ -478,14 +478,16 @@ export function InvoiceManager() {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [previewZoom, setPreviewZoom] = useState<number>(0.85);
   const [mobileEditorTab, setMobileEditorTab] = useState<'form' | 'preview'>('form');
+  const [isDesktop, setIsDesktop] = useState<boolean>(true);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isPrintingRef = useRef<boolean>(false);
 
-  // Auto-fit A4 preview scale to mobile and tablet screens
+  // Auto-fit A4 preview scale and detect desktop layout
   useEffect(() => {
     const updatePreviewScale = () => {
       if (typeof window !== 'undefined') {
         const w = window.innerWidth;
+        setIsDesktop(w >= 1024);
         if (w < 640) {
           const availableW = Math.max(280, w - 24);
           setPreviewZoom(Number(Math.min(0.55, availableW / 794).toFixed(2)));
@@ -2426,9 +2428,11 @@ export function InvoiceManager() {
             display: block !important;
             height: auto !important;
             max-height: none !important;
-            overflow: visible !important;
+            overflow-x: hidden !important;
+            overflow-y: visible !important;
             border: none !important;
             background: transparent !important;
+            touch-action: pan-y !important;
           }
           .form-panel {
             width: 100% !important;
@@ -2437,9 +2441,12 @@ export function InvoiceManager() {
             height: auto !important;
             max-height: none !important;
             overflow-y: visible !important;
+            overflow-x: hidden !important;
             border-right: none !important;
-            padding: 0 !important;
+            padding: 0 0 5rem 0 !important;
             background: transparent !important;
+            touch-action: pan-y !important;
+            -webkit-overflow-scrolling: touch !important;
           }
           .preview-panel {
             width: 100% !important;
@@ -2452,6 +2459,7 @@ export function InvoiceManager() {
             border: none !important;
             padding: 0.5rem 0.25rem 6rem 0.25rem !important;
             background: transparent !important;
+            touch-action: pan-y !important;
             -webkit-overflow-scrolling: touch !important;
             box-sizing: border-box !important;
           }
@@ -4425,15 +4433,16 @@ export function InvoiceManager() {
 
           {/* Split Layout: Form Panel (Left) & Preview Panel (Right) */}
           <div ref={splitContainerRef} className="split-container relative">
-            {/* LEFT FORM PANEL (lines 68-141) */}
-            <div
-              className={`form-panel no-print ${mobileEditorTab === 'preview' ? 'max-lg:hidden' : 'block'}`}
-              style={{
-                width: `${leftPanelWidth}%`,
-                flex: `0 0 ${leftPanelWidth}%`,
-                maxWidth: `${leftPanelWidth}%`,
-              }}
-            >
+            {/* LEFT FORM PANEL: Render on Desktop OR when Data Entry tab is active on mobile/tablet */}
+            {(isDesktop || mobileEditorTab === 'form') && (
+              <div
+                className="form-panel no-print"
+                style={{
+                  width: isDesktop ? `${leftPanelWidth}%` : '100%',
+                  flex: isDesktop ? `0 0 ${leftPanelWidth}%` : 'none',
+                  maxWidth: isDesktop ? `${leftPanelWidth}%` : '100%',
+                }}
+              >
               {/* =========================================================================
                   SECTION 1: NON-TRIP RELATED CONTENTS (Bill Logistics & Parties)
               ========================================================================= */}
@@ -5464,78 +5473,82 @@ export function InvoiceManager() {
                 </div>
               </div>
             </div>
+            )}
 
-            {/* DRAGGABLE ELASTIC SPLITTER GUTTER WITH PROMINENT VISUAL INDICATOR */}
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Drag to resize panels"
-              aria-valuenow={Math.round(leftPanelWidth)}
-              aria-valuemin={20}
-              aria-valuemax={75}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowLeft') {
-                  setLeftPanelWidth((w) => Math.max(20, w - 2));
-                } else if (e.key === 'ArrowRight') {
-                  setLeftPanelWidth((w) => Math.min(75, w + 2));
-                }
-              }}
-              className={`no-print hidden lg:flex items-center justify-center relative cursor-col-resize select-none transition-colors z-30 group w-3 shrink-0 ${
-                isDragging
-                  ? 'bg-blue-600 shadow-sm'
-                  : 'bg-gray-200 dark:bg-zinc-800 hover:bg-blue-400 dark:hover:bg-blue-500'
-              }`}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onTouchStart={() => setIsDragging(true)}
-              onDoubleClick={() => {
-                setLeftPanelWidth(38);
-                try {
-                  localStorage.setItem('aus_invoice_splitter_width', '38');
-                } catch {}
-              }}
-              title="Drag to resize panels (Double-click to reset)"
-              style={{ touchAction: 'none' }}
-            >
-              {/* Extended invisible touch/grab hitbox */}
-              <div className="absolute inset-y-0 -left-2 -right-2 cursor-col-resize" />
-
-              {/* Central Draggable Visual Indicator Handle Capsule */}
+            {/* DRAGGABLE ELASTIC SPLITTER GUTTER WITH PROMINENT VISUAL INDICATOR (Desktop Only) */}
+            {isDesktop && (
               <div
-                className={`absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-7 h-24 rounded-full border-2 flex flex-col items-center justify-center gap-1.5 shadow-lg transition-all duration-150 z-40 pointer-events-none ${
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Drag to resize panels"
+                aria-valuenow={Math.round(leftPanelWidth)}
+                aria-valuemin={20}
+                aria-valuemax={75}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowLeft') {
+                    setLeftPanelWidth((w) => Math.max(20, w - 2));
+                  } else if (e.key === 'ArrowRight') {
+                    setLeftPanelWidth((w) => Math.min(75, w + 2));
+                  }
+                }}
+                className={`no-print hidden lg:flex items-center justify-center relative cursor-col-resize select-none transition-colors z-30 group w-3 shrink-0 ${
                   isDragging
-                    ? 'bg-blue-600 border-blue-500 text-white shadow-blue-500/40 ring-4 ring-blue-500/25 scale-105'
-                    : 'bg-white dark:bg-zinc-900 border-gray-300 dark:border-zinc-700 text-gray-600 dark:text-zinc-300 group-hover:border-blue-500 dark:group-hover:border-blue-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:shadow-xl group-hover:scale-105'
+                    ? 'bg-blue-600 shadow-sm'
+                    : 'bg-gray-200 dark:bg-zinc-800 hover:bg-blue-400 dark:hover:bg-blue-500'
                 }`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onTouchStart={() => setIsDragging(true)}
+                onDoubleClick={() => {
+                  setLeftPanelWidth(38);
+                  try {
+                    localStorage.setItem('aus_invoice_splitter_width', '38');
+                  } catch {}
+                }}
+                title="Drag to resize panels (Double-click to reset)"
+                style={{ touchAction: 'none' }}
               >
-                <ChevronsLeftRight className="w-3.5 h-3.5 shrink-0" />
-                <div className="flex flex-col gap-1 items-center">
-                  <span className={`w-1 h-1 rounded-full ${isDragging ? 'bg-white' : 'bg-gray-400 dark:bg-zinc-500 group-hover:bg-blue-600 dark:group-hover:bg-blue-400'}`} />
-                  <span className={`w-1 h-1 rounded-full ${isDragging ? 'bg-white' : 'bg-gray-400 dark:bg-zinc-500 group-hover:bg-blue-600 dark:group-hover:bg-blue-400'}`} />
-                  <span className={`w-1 h-1 rounded-full ${isDragging ? 'bg-white' : 'bg-gray-400 dark:bg-zinc-500 group-hover:bg-blue-600 dark:group-hover:bg-blue-400'}`} />
+                {/* Extended invisible touch/grab hitbox */}
+                <div className="absolute inset-y-0 -left-2 -right-2 cursor-col-resize" />
+
+                {/* Central Draggable Visual Indicator Handle Capsule */}
+                <div
+                  className={`absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-7 h-24 rounded-full border-2 flex flex-col items-center justify-center gap-1.5 shadow-lg transition-all duration-150 z-40 pointer-events-none ${
+                    isDragging
+                      ? 'bg-blue-600 border-blue-500 text-white shadow-blue-500/40 ring-4 ring-blue-500/25 scale-105'
+                      : 'bg-white dark:bg-zinc-900 border-gray-300 dark:border-zinc-700 text-gray-600 dark:text-zinc-300 group-hover:border-blue-500 dark:group-hover:border-blue-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:shadow-xl group-hover:scale-105'
+                  }`}
+                >
+                  <ChevronsLeftRight className="w-3.5 h-3.5 shrink-0" />
+                  <div className="flex flex-col gap-1 items-center">
+                    <span className={`w-1 h-1 rounded-full ${isDragging ? 'bg-white' : 'bg-gray-400 dark:bg-zinc-500 group-hover:bg-blue-600 dark:group-hover:bg-blue-400'}`} />
+                    <span className={`w-1 h-1 rounded-full ${isDragging ? 'bg-white' : 'bg-gray-400 dark:bg-zinc-500 group-hover:bg-blue-600 dark:group-hover:bg-blue-400'}`} />
+                    <span className={`w-1 h-1 rounded-full ${isDragging ? 'bg-white' : 'bg-gray-400 dark:bg-zinc-500 group-hover:bg-blue-600 dark:group-hover:bg-blue-400'}`} />
+                  </div>
+                  <GripVertical className="w-3.5 h-3.5 shrink-0 opacity-70" />
                 </div>
-                <GripVertical className="w-3.5 h-3.5 shrink-0 opacity-70" />
-              </div>
 
-              {/* Hover Tooltip Pill */}
-              <div className="absolute top-1/2 -translate-y-1/2 left-8 px-2.5 py-1.5 rounded-lg bg-gray-900/95 text-white dark:bg-zinc-800/95 dark:text-white text-[11px] font-medium shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none whitespace-nowrap z-50 border border-white/10 flex items-center gap-1.5 translate-x-1 group-hover:translate-x-0">
-                <ChevronsLeftRight className="w-3 h-3 text-blue-400" />
-                <span>Drag to resize panels</span>
+                {/* Hover Tooltip Pill */}
+                <div className="absolute top-1/2 -translate-y-1/2 left-8 px-2.5 py-1.5 rounded-lg bg-gray-900/95 text-white dark:bg-zinc-800/95 dark:text-white text-[11px] font-medium shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none whitespace-nowrap z-50 border border-white/10 flex items-center gap-1.5 translate-x-1 group-hover:translate-x-0">
+                  <ChevronsLeftRight className="w-3 h-3 text-blue-400" />
+                  <span>Drag to resize panels</span>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* RIGHT PREVIEW PANEL (Reference repo: invoice.js lines 909-1027) */}
-            <div
-              className={`preview-panel ${mobileEditorTab === 'form' ? 'max-lg:hidden' : 'flex'}`}
-              style={{
-                width: `calc(${100 - leftPanelWidth}% - 12px)`,
-                flex: `1 1 calc(${100 - leftPanelWidth}% - 12px)`,
-                maxWidth: `calc(${100 - leftPanelWidth}% - 12px)`,
-              }}
-            >
+            {/* RIGHT PREVIEW PANEL: Render on Desktop OR when Preview tab is active on mobile/tablet */}
+            {(isDesktop || mobileEditorTab === 'preview') && (
+              <div
+                className="preview-panel"
+                style={{
+                  width: isDesktop ? `calc(${100 - leftPanelWidth}% - 12px)` : '100%',
+                  flex: isDesktop ? `1 1 calc(${100 - leftPanelWidth}% - 12px)` : 'none',
+                  maxWidth: isDesktop ? `calc(${100 - leftPanelWidth}% - 12px)` : '100%',
+                }}
+              >
               {/* Zoom & Fit Control Toolbar (Sticky at top of Preview Panel) */}
               <div className="no-print sticky top-0 z-30 mb-3 px-3 py-1.5 rounded-full bg-white/95 dark:bg-zinc-800/95 backdrop-blur-md border border-gray-200 dark:border-white/10 shadow-sm flex items-center gap-2 text-xs">
                 <span className="font-semibold text-gray-700 dark:text-gray-300 px-1 hidden sm:inline">
@@ -6019,6 +6032,7 @@ export function InvoiceManager() {
                 </div>
               </div>
             </div>
+            )}
           </div>
 
           {/* 3 Floating FABs in Vertical Stack when Clicked */}
