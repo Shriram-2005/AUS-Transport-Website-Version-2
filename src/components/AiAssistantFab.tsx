@@ -432,22 +432,25 @@ export function AiAssistantFab() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleDragStart = (clientX: number, clientY: number) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (!fabPosition) return;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
     isDraggingFabRef.current = true;
     hasMovedRef.current = false;
     dragStartRef.current = {
-      startX: clientX,
-      startY: clientY,
+      startX: e.clientX,
+      startY: e.clientY,
       initialX: fabPosition.x,
       initialY: fabPosition.y,
     };
   };
 
-  const handleDragMove = (clientX: number, clientY: number) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (!isDraggingFabRef.current) return;
-    const deltaX = clientX - dragStartRef.current.startX;
-    const deltaY = clientY - dragStartRef.current.startY;
+    const deltaX = e.clientX - dragStartRef.current.startX;
+    const deltaY = e.clientY - dragStartRef.current.startY;
 
     if (Math.hypot(deltaX, deltaY) > 6) {
       hasMovedRef.current = true;
@@ -459,38 +462,19 @@ export function AiAssistantFab() {
     setFabPosition({ x: nextX, y: nextY });
   };
 
-  const handleDragEnd = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (!isDraggingFabRef.current) return;
     isDraggingFabRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+
     if (hasMovedRef.current && fabPosition) {
       try {
         localStorage.setItem('aus_ai_fab_pos', JSON.stringify(fabPosition));
       } catch {}
     }
   };
-
-  useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => handleDragMove(e.clientX, e.clientY);
-    const onMouseUp = () => handleDragEnd();
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length > 0) {
-        handleDragMove(e.touches[0].clientX, e.touches[0].clientY);
-      }
-    };
-    const onTouchEnd = () => handleDragEnd();
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    window.addEventListener('touchmove', onTouchMove, { passive: true });
-    window.addEventListener('touchend', onTouchEnd);
-
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('touchmove', onTouchMove);
-      window.removeEventListener('touchend', onTouchEnd);
-    };
-  }, [fabPosition]);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -710,15 +694,10 @@ export function AiAssistantFab() {
 
         <button
           type="button"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            handleDragStart(e.clientX, e.clientY);
-          }}
-          onTouchStart={(e) => {
-            if (e.touches.length > 0) {
-              handleDragStart(e.touches[0].clientX, e.touches[0].clientY);
-            }
-          }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
           onClick={() => {
             if (!hasMovedRef.current) {
               setIsOpen((prev) => !prev);

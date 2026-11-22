@@ -2426,40 +2426,38 @@ export function InvoiceManager() {
         @media (max-width: 1024px) {
           .split-container {
             display: block !important;
-            height: auto !important;
-            max-height: none !important;
-            overflow-x: hidden !important;
-            overflow-y: visible !important;
+            height: calc(100dvh - 160px) !important;
+            max-height: calc(100dvh - 160px) !important;
+            min-height: 420px !important;
+            overflow: hidden !important;
             border: none !important;
             background: transparent !important;
-            touch-action: pan-y !important;
           }
           .form-panel {
             width: 100% !important;
             max-width: 100% !important;
             flex: none !important;
-            height: auto !important;
-            max-height: none !important;
-            overflow-y: visible !important;
+            height: 100% !important;
+            max-height: 100% !important;
+            overflow-y: auto !important;
             overflow-x: hidden !important;
             border-right: none !important;
-            padding: 0 0 5rem 0 !important;
+            padding: 0.5rem 0.25rem 6rem 0.25rem !important;
             background: transparent !important;
-            touch-action: pan-y !important;
             -webkit-overflow-scrolling: touch !important;
+            box-sizing: border-box !important;
           }
           .preview-panel {
             width: 100% !important;
-            max-width: 100vw !important;
+            max-width: 100% !important;
             flex: none !important;
-            height: auto !important;
-            max-height: none !important;
+            height: 100% !important;
+            max-height: 100% !important;
+            overflow-y: auto !important;
             overflow-x: auto !important;
-            overflow-y: visible !important;
             border: none !important;
             padding: 0.5rem 0.25rem 6rem 0.25rem !important;
             background: transparent !important;
-            touch-action: pan-y !important;
             -webkit-overflow-scrolling: touch !important;
             box-sizing: border-box !important;
           }
