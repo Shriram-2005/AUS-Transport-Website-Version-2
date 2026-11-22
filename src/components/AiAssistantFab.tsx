@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import {
   Bot,
   X,
@@ -344,9 +346,37 @@ function FormattedAiContent({ text }: { text: string }) {
 }
 
 export function AiAssistantFab() {
+  const pathname = usePathname();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Authentication check: Hide AI assistant on /login page and only show when user is logged in
+  useEffect(() => {
+    try {
+      const supabase = createClient();
+      supabase.auth.getUser()
+        .then(({ data: { user } }) => {
+          setIsAuthenticated(!!user);
+        })
+        .catch(() => {
+          setIsAuthenticated(false);
+        });
+
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        setIsAuthenticated(!!session?.user);
+      });
+
+      return () => {
+        subscription?.unsubscribe();
+      };
+    } catch {
+      setIsAuthenticated(false);
+    }
+  }, []);
 
   // Authentication & 5-minute strict timer state
   const [isEditAuthorized, setIsEditAuthorized] = useState(false);
@@ -538,10 +568,15 @@ export function AiAssistantFab() {
     { label: '[Profit & Loss]', query: 'Show profit and loss overview across fleet vehicles' },
   ];
 
+  // Strict User Requirement: AI Assistant must NOT be present on /login and ONLY available after successful login
+  if (pathname === '/login' || isAuthenticated !== true) {
+    return null;
+  }
+
   return (
     <>
-      {/* FLOATING ACTION BUTTON */}
-      <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 group">
+      {/* FLOATING ACTION BUTTON - Offset to right-24 so it NEVER overlaps the invoice '+' action button */}
+      <div className="fixed bottom-6 right-24 sm:right-24 z-40 flex items-center gap-2 group">
         {!isOpen && (
           <div className="hidden sm:flex items-center px-3 py-1.5 rounded-full bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-md text-xs font-semibold text-gray-700 dark:text-zinc-200 pointer-events-none transition-all opacity-0 group-hover:opacity-100 -translate-x-1">
             <span

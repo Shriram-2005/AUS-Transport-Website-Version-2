@@ -134,19 +134,20 @@ export function DashboardHeader({
   };
 
   return (
-    <header className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border-b border-black/10 dark:border-white/10 bg-white/90 dark:bg-black/90 backdrop-blur-md sticky top-0 z-50 transition-colors duration-200 no-print print:hidden gap-2">
+    <header className="w-full h-14 sm:h-16 flex items-center justify-between px-2.5 sm:px-4 border-b border-black/10 dark:border-white/10 bg-white/95 dark:bg-black/95 backdrop-blur-md sticky top-0 z-[60] transition-colors duration-200 no-print print:hidden gap-1.5 sm:gap-2 flex-nowrap overflow-x-hidden">
       {/* Left side: Hamburger button + Back Button + AUS Transport Brand */}
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         <button
           type="button"
           onClick={onToggleSidebar}
           aria-label={isOpen ? dict.dashboard?.menuCloseAria : dict.dashboard?.menuOpenAria}
-          className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 transition-all duration-200 cursor-pointer flex items-center justify-center select-none"
+          title={isOpen ? 'Close menu' : 'Open navigation menu'}
+          className="w-10 h-10 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center select-none touch-manipulation shrink-0"
         >
           {isOpen ? (
-            <X className="w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-200" />
+            <X className="w-5 h-5 transition-transform duration-200" />
           ) : (
-            <Menu className="w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-200" />
+            <Menu className="w-5 h-5 transition-transform duration-200" />
           )}
         </button>
 
@@ -162,22 +163,22 @@ export function DashboardHeader({
           }}
           aria-label="Back to previous page"
           title="Go back to where you came from"
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 transition-all cursor-pointer text-xs font-semibold select-none active:scale-95"
+          className="inline-flex items-center justify-center gap-1.5 w-9 h-9 sm:w-auto sm:px-2.5 sm:py-1.5 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 transition-all cursor-pointer text-xs font-semibold select-none active:scale-95 shrink-0"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Back</span>
+          <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden md:inline">Back</span>
         </button>
 
         <Link
           href="/dashboard"
-          className="font-bold text-base sm:text-xl tracking-tight text-black dark:text-white select-none no-underline truncate"
+          className="font-bold text-sm sm:text-base md:text-xl tracking-tight text-black dark:text-white select-none no-underline truncate max-w-[100px] xs:max-w-[130px] sm:max-w-none shrink-0"
         >
           {dict.brand.name}
         </Link>
       </div>
 
       {/* Center / Action Section: Refresh Sub-category + DB Connection + Auto-Save & Manual Save */}
-      <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap justify-end md:justify-center">
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         {/* DB Connection Status (Strictly Supabase Database Status) */}
         <button
           type="button"
@@ -189,7 +190,7 @@ export function DashboardHeader({
               ? 'Database Offline - Click to reconnect'
               : 'Checking database connection...'
           }
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold select-none transition-all cursor-pointer ${
+          className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-semibold select-none transition-all cursor-pointer shrink-0 ${
             dbStatus === 'active'
               ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
               : dbStatus === 'offline'
@@ -211,11 +212,11 @@ export function DashboardHeader({
               }`}
             />
           </span>
-          <Database className="w-3.5 h-3.5 opacity-80" />
+          <Database className="w-3.5 h-3.5 opacity-80 shrink-0" />
           <span className="hidden sm:inline">
-            {dbStatus === 'active' ? 'DB Active' : dbStatus === 'offline' ? 'DB Offline' : 'Checking DB...'}
+            {dbStatus === 'active' ? 'DB Active' : dbStatus === 'offline' ? 'DB Offline' : 'Checking...'}
           </span>
-          <span className="sm:hidden">
+          <span className="sm:hidden text-[11px] font-bold">
             {dbStatus === 'active' ? 'DB' : dbStatus === 'offline' ? 'Offline' : '...'}
           </span>
         </button>
@@ -226,11 +227,11 @@ export function DashboardHeader({
           onClick={handleRefreshClick}
           disabled={isRefreshing}
           title={`Reload and fetch latest data for ${activeTabLabel} from database`}
-          className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-black/15 dark:border-white/15 bg-black/[0.03] dark:bg-white/[0.04] hover:bg-black/10 dark:hover:bg-white/10 text-black dark:text-white text-xs font-semibold transition-all cursor-pointer select-none active:scale-95"
+          className="inline-flex items-center justify-center gap-1.5 w-9 h-9 sm:w-auto sm:px-3 sm:py-1.5 rounded-lg border border-black/15 dark:border-white/15 bg-black/[0.03] dark:bg-white/[0.04] hover:bg-black/10 dark:hover:bg-white/10 text-black dark:text-white text-xs font-semibold transition-all cursor-pointer select-none active:scale-95 shrink-0"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-black dark:text-white' : 'text-black/70 dark:text-white/70'}`} />
-          <span className="hidden sm:inline">Refresh {activeTabLabel} Page</span>
-          <span className="sm:hidden">Refresh</span>
+          <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isRefreshing ? 'animate-spin text-black dark:text-white' : 'text-black/70 dark:text-white/70'}`} />
+          <span className="hidden md:inline">Refresh {activeTabLabel} Page</span>
+          <span className="hidden sm:inline md:hidden">Refresh</span>
         </button>
 
         {/* Save Status Indicator */}
@@ -242,7 +243,7 @@ export function DashboardHeader({
               ? 'Auto-saving changes to database...'
               : 'Unsaved edits present'
           }
-          className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors select-none ${
+          className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors select-none shrink-0 ${
             saveStatus === 'saved'
               ? 'bg-black/[0.02] dark:bg-white/[0.03] border-black/10 dark:border-white/10 text-black/70 dark:text-white/70'
               : saveStatus === 'saving'
@@ -252,7 +253,7 @@ export function DashboardHeader({
         >
           {saveStatus === 'saved' && (
             <>
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>Saved</span>
               {lastSavedTime && (
                 <span className="text-[10px] opacity-60 font-mono ml-0.5">{lastSavedTime}</span>
@@ -261,13 +262,13 @@ export function DashboardHeader({
           )}
           {saveStatus === 'saving' && (
             <>
-              <Clock className="w-3.5 h-3.5 animate-spin" />
+              <Clock className="w-3.5 h-3.5 animate-spin shrink-0" />
               <span>Saving...</span>
             </>
           )}
           {saveStatus === 'unsaved' && (
             <>
-              <AlertCircle className="w-3.5 h-3.5" />
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>Unsaved</span>
             </>
           )}
@@ -279,22 +280,22 @@ export function DashboardHeader({
           onClick={handleManualSaveClick}
           disabled={saveStatus === 'saving'}
           title="Manually save all current changes to database immediately"
-          className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-black text-white dark:bg-white dark:text-black hover:opacity-90 active:scale-95 text-xs font-semibold transition-all cursor-pointer select-none disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-black text-white dark:bg-white dark:text-black hover:opacity-90 active:scale-95 text-xs font-semibold transition-all cursor-pointer select-none disabled:opacity-50 shrink-0"
         >
-          <Save className="w-3.5 h-3.5" />
-          <span>Save</span>
+          <Save className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden sm:inline">Save</span>
         </button>
       </div>
 
       {/* Right side: Profile, Theme Toggle & Logout */}
-      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         {/* Profile Pill */}
-        <div className="flex items-center gap-2 px-2.5 py-1 rounded-full border border-black/15 dark:border-white/15 bg-black/[0.02] dark:bg-white/[0.03]">
-          <div className="w-6 h-6 rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center font-bold text-xs select-none">
+        <div className="flex items-center gap-1.5 p-1 sm:px-2.5 sm:py-1 rounded-full border border-black/15 dark:border-white/15 bg-black/[0.02] dark:bg-white/[0.03] shrink-0">
+          <div className="w-6 h-6 rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center font-bold text-xs select-none shrink-0">
             {userEmail ? userEmail.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
           </div>
-          <div className="hidden lg:flex flex-col text-left pr-1 leading-tight">
-            <span className="text-xs font-semibold truncate max-w-[130px] text-black dark:text-white">
+          <div className="hidden xl:flex flex-col text-left pr-1 leading-tight">
+            <span className="text-xs font-semibold truncate max-w-[120px] text-black dark:text-white">
               {userEmail || dict.dashboard?.profile}
             </span>
             <span className="text-[10px] text-black/50 dark:text-white/50 flex items-center gap-1">
@@ -312,10 +313,11 @@ export function DashboardHeader({
           type="button"
           onClick={onLogout}
           aria-label={dict.dashboard?.logoutAria}
-          className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs font-semibold"
+          title="Log out of AUS Transport Console"
+          className="inline-flex items-center justify-center gap-1.5 w-9 h-9 sm:w-auto sm:px-3 sm:py-1.5 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all cursor-pointer text-xs font-semibold shrink-0"
         >
-          <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          <span className="hidden sm:inline">{dict.dashboard?.logout}</span>
+          <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+          <span className="hidden md:inline">{dict.dashboard?.logout}</span>
         </button>
       </div>
     </header>

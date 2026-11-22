@@ -106,12 +106,23 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
+      setIsMobile(window.innerWidth < 1024);
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Close menu on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && menuOpen) {
+        setMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [menuOpen]);
 
   useEffect(() => {
     try {
@@ -201,32 +212,35 @@ export default function DashboardPage() {
       />
 
       <div className="flex-1 flex relative print:block print:h-auto print:overflow-visible">
-        {/* Mobile Backdrop Overlay (Active only on small screens < md) */}
+        {/* Mobile & Tablet Backdrop Overlay (Active only on screens < lg) */}
         {menuOpen && (
           <div
-            className="fixed inset-0 top-[65px] bg-black/40 dark:bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity cursor-pointer no-print print:hidden"
+            className="fixed inset-0 top-14 sm:top-16 bg-black/50 dark:bg-black/70 backdrop-blur-xs z-40 lg:hidden transition-opacity cursor-pointer no-print print:hidden"
             onClick={() => setMenuOpen(false)}
             aria-hidden="true"
           />
         )}
 
-        {/* Responsive Sidebar: Icon Rail when closed on desktop, expands on toggle, full overlay drawer on mobile */}
+        {/* Responsive Sidebar:
+            - Mobile & Tablet (< lg): Slide-in Drawer at z-50 (HIGHER than backdrop z-40 so items are 100% selectable!)
+            - Desktop (>= lg): Sticky sidebar rail (w-[72px]) expanding to full width (w-64)
+        */}
         <aside
           className={`
             no-print print:hidden
-            fixed md:sticky top-[65px] bottom-0 left-0 z-30
-            md:h-[calc(100vh-65px)] bg-white dark:bg-black
+            fixed lg:sticky top-14 sm:top-16 bottom-0 left-0 z-50
+            h-[calc(100dvh-3.5rem)] sm:h-[calc(100dvh-4rem)] bg-white dark:bg-black
             border-r border-black/10 dark:border-white/10
             transition-all duration-300 ease-in-out flex flex-col justify-between shrink-0 pointer-events-auto
             ${
               menuOpen
-                ? 'translate-x-0 w-72 md:w-64 shadow-2xl md:shadow-none'
-                : 'max-md:-translate-x-full max-md:pointer-events-none w-72 md:w-[72px]'
+                ? 'translate-x-0 w-72 lg:w-64 shadow-2xl lg:shadow-none'
+                : 'max-lg:-translate-x-full max-lg:pointer-events-none w-72 lg:w-[72px]'
             }
           `}
         >
           {/* Sidebar Navigation Content */}
-          <div className="p-4 space-y-1.5 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="p-3 sm:p-4 space-y-1.5 flex-1 overflow-y-auto overflow-x-hidden">
             {/* Navigation items aligned in the exact same vertical column */}
             <nav className="space-y-1.5 flex flex-col">
               {navItems.map((item) => {
@@ -238,20 +252,23 @@ export default function DashboardPage() {
                     type="button"
                     title={item.label}
                     onClick={(e) => {
+                      e.preventDefault();
                       e.stopPropagation();
                       navigateToTab(item.id);
-                      if (isMobile) setMenuOpen(false);
+                      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                        setMenuOpen(false);
+                      }
                     }}
                     className={`
-                      h-10 rounded-xl text-sm font-semibold transition-all cursor-pointer select-none flex items-center relative z-10 pointer-events-auto
+                      h-10 rounded-xl text-sm font-semibold transition-all cursor-pointer select-none flex items-center relative z-10 pointer-events-auto touch-manipulation active:scale-[0.98]
                       ${
                         menuOpen
-                          ? 'w-full px-2.5 gap-3 justify-start text-left'
+                          ? 'w-full px-3 gap-3 justify-start text-left'
                           : 'w-10 justify-center'
                       }
                       ${
                         isActive
-                          ? 'bg-black text-white dark:bg-white dark:text-black shadow-sm'
+                          ? 'bg-black text-white dark:bg-white dark:text-black shadow-sm font-bold'
                           : 'text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10 hover:text-black dark:hover:text-white'
                       }
                     `}
