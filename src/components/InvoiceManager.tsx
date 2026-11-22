@@ -473,12 +473,32 @@ export function InvoiceManager() {
   const [placeResults, setPlaceResults] = useState<IndianPlace[]>([]);
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
 
-  // Elastic splitter resizer state
+  // Elastic splitter resizer state & mobile preview toggle
   const [leftPanelWidth, setLeftPanelWidth] = useState<number>(38);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [previewZoom, setPreviewZoom] = useState<number>(0.85);
+  const [mobileEditorTab, setMobileEditorTab] = useState<'form' | 'preview'>('form');
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isPrintingRef = useRef<boolean>(false);
+
+  // Auto-fit A4 preview scale to mobile and tablet screens
+  useEffect(() => {
+    const updatePreviewScale = () => {
+      if (typeof window !== 'undefined') {
+        const w = window.innerWidth;
+        if (w < 640) {
+          const availableW = Math.max(280, w - 24);
+          setPreviewZoom(Number(Math.min(0.55, availableW / 794).toFixed(2)));
+        } else if (w < 1024) {
+          const availableW = Math.max(500, w - 48);
+          setPreviewZoom(Number(Math.min(0.85, availableW / 794).toFixed(2)));
+        }
+      }
+    };
+    updatePreviewScale();
+    window.addEventListener('resize', updatePreviewScale);
+    return () => window.removeEventListener('resize', updatePreviewScale);
+  }, []);
 
   // Load persisted width from localStorage
   useEffect(() => {
@@ -2403,21 +2423,40 @@ export function InvoiceManager() {
 
         @media (max-width: 1024px) {
           .split-container {
-            flex-direction: column !important;
+            display: block !important;
             height: auto !important;
             max-height: none !important;
             overflow: visible !important;
             border: none !important;
             background: transparent !important;
           }
-          .form-panel, .preview-panel {
+          .form-panel {
             width: 100% !important;
             max-width: 100% !important;
-            flex: 1 1 100% !important;
+            flex: none !important;
             height: auto !important;
             max-height: none !important;
             overflow-y: visible !important;
             border-right: none !important;
+            padding: 0 !important;
+            background: transparent !important;
+          }
+          .preview-panel {
+            width: 100% !important;
+            max-width: 100vw !important;
+            flex: none !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow-x: auto !important;
+            overflow-y: visible !important;
+            border: none !important;
+            padding: 0.5rem 0.25rem 6rem 0.25rem !important;
+            background: transparent !important;
+            -webkit-overflow-scrolling: touch !important;
+            box-sizing: border-box !important;
+          }
+          .preview-scale-wrapper {
+            max-width: 100% !important;
           }
         }
 
@@ -4325,18 +4364,6 @@ export function InvoiceManager() {
               )}
             </div>
           )}
-
-          {/* Floating Action Button for mobile on dashboard view */}
-          <div className="sm:hidden fixed bottom-6 right-6 z-40">
-            <button
-              type="button"
-              onClick={handleCreateNewBill}
-              aria-label="Create New Bill"
-              className="w-14 h-14 bg-black text-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 rounded-full shadow-2xl flex items-center justify-center hover:bg-neutral-800 active:scale-95 transition-all cursor-pointer"
-            >
-              <Plus className="w-6 h-6 text-white dark:text-black" />
-            </button>
-          </div>
         </div>
       )}
 
@@ -4368,11 +4395,39 @@ export function InvoiceManager() {
             </span>
           </div>
 
+          {/* Mobile & Tablet Segmented View Switcher: Data Entry Form vs. Live A4 Preview */}
+          <div className="lg:hidden flex items-center p-1 rounded-2xl bg-gray-100 dark:bg-zinc-800/80 border border-gray-200 dark:border-zinc-700/60 mb-3.5 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setMobileEditorTab('form')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer select-none active:scale-[0.98] ${
+                mobileEditorTab === 'form'
+                  ? 'bg-white dark:bg-zinc-900 text-black dark:text-white shadow-xs'
+                  : 'text-gray-500 dark:text-zinc-400 hover:text-black dark:hover:text-white'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Data Entry Form</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileEditorTab('preview')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer select-none active:scale-[0.98] ${
+                mobileEditorTab === 'preview'
+                  ? 'bg-white dark:bg-zinc-900 text-black dark:text-white shadow-xs'
+                  : 'text-gray-500 dark:text-zinc-400 hover:text-black dark:hover:text-white'
+              }`}
+            >
+              <Eye className="w-4 h-4" />
+              <span>Invoice Preview (A4)</span>
+            </button>
+          </div>
+
           {/* Split Layout: Form Panel (Left) & Preview Panel (Right) */}
           <div ref={splitContainerRef} className="split-container relative">
             {/* LEFT FORM PANEL (lines 68-141) */}
             <div
-              className="form-panel no-print"
+              className={`form-panel no-print ${mobileEditorTab === 'preview' ? 'max-lg:hidden' : 'block'}`}
               style={{
                 width: `${leftPanelWidth}%`,
                 flex: `0 0 ${leftPanelWidth}%`,
@@ -5474,7 +5529,7 @@ export function InvoiceManager() {
 
             {/* RIGHT PREVIEW PANEL (Reference repo: invoice.js lines 909-1027) */}
             <div
-              className="preview-panel"
+              className={`preview-panel ${mobileEditorTab === 'form' ? 'max-lg:hidden' : 'flex'}`}
               style={{
                 width: `calc(${100 - leftPanelWidth}% - 12px)`,
                 flex: `1 1 calc(${100 - leftPanelWidth}% - 12px)`,
@@ -5489,7 +5544,7 @@ export function InvoiceManager() {
                 <div className="h-3.5 w-px bg-gray-200 dark:bg-white/10 hidden sm:block" />
                 <button
                   type="button"
-                  onClick={() => setPreviewZoom((z) => Math.max(0.5, Number((z - 0.05).toFixed(2))))}
+                  onClick={() => setPreviewZoom((z) => Math.max(0.35, Number((z - 0.05).toFixed(2))))}
                   title="Zoom Out"
                   aria-label="Zoom Out"
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300 cursor-pointer transition-colors"
@@ -5511,7 +5566,14 @@ export function InvoiceManager() {
                 <div className="h-3.5 w-px bg-gray-200 dark:bg-white/10" />
                 <button
                   type="button"
-                  onClick={() => setPreviewZoom(0.82)}
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      const w = window.innerWidth;
+                      if (w < 640) setPreviewZoom(Number(Math.min(0.55, (w - 24) / 794).toFixed(2)));
+                      else if (w < 1024) setPreviewZoom(Number(Math.min(0.85, (w - 48) / 794).toFixed(2)));
+                      else setPreviewZoom(0.82);
+                    }
+                  }}
                   title="Fit to Screen"
                   className="px-2 py-0.5 rounded text-[11px] font-medium hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 cursor-pointer transition-colors"
                 >

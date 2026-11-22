@@ -536,12 +536,17 @@ export function AiAssistantFab() {
         window.dispatchEvent(new CustomEvent(INVOICES_CHANGE_EVENT, { detail: null }));
       }
     } catch (err: any) {
+      const errMsg = err?.message || 'Unable to connect to AI server';
+      let formattedNotice = `### Notice\n\n> ${errMsg}\n\n*The AI Assistant is active in Read-Only mode. You can ask for **recent bills**, **pending payments**, **fleet KMs**, **fuel**, or **maintenance** directly.*`;
+      if (errMsg.includes('Permission denied') || errMsg.includes('service')) {
+        formattedNotice = `### Google Gemini API Notice\n\n> Google Generative AI reported: *${errMsg}*\n\nTo resolve this in Google Cloud / Vercel:\n1. Ensure your Google Cloud Project has **Generative Language API** enabled, or generate a free key from **Google AI Studio** (https://aistudio.google.com/app/apikey).\n2. Update \`GEMINI_API_KEY\` in your Vercel Project Settings > Environment Variables.\n\n*Live database queries remain fully functional across all categories.*`;
+      }
       setMessages((prev) => [
         ...prev,
         {
           id: `ai_err_${Date.now()}`,
           sender: 'ai',
-          text: `Error: ${err.message || 'Unable to connect to AI server'}`,
+          text: formattedNotice,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -626,7 +631,7 @@ export function AiAssistantFab() {
                     AUS AI Assistant
                   </h3>
                   <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300">
-                    gemini-3.8-flash
+                    gemini-flash
                   </span>
                 </div>
 

@@ -84,11 +84,12 @@ export async function callGemini(
     throw new Error('Gemini API key is missing. Please check GEMINI_API_KEY in .env.local.');
   }
 
-  // Candidate models: user-specified gemini-3.8-flash first, followed by proven fast models
+  // Candidate models: prioritizing proven fast and reliable flash models
   const candidateModels = [
-    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash',
     'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
     'gemini-3.7-flash',
     'gemini-flash-latest',
   ];

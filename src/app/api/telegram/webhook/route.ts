@@ -242,51 +242,63 @@ Choose an option from the menu below, or ask any question about bills, fuel, mai
       return NextResponse.json({ ok: true });
     }
 
-    // Fetch live records across all categories
-    const [
-      { data: recentInvoices },
-      { data: vehicles },
-      { data: drivers },
-      { data: fuelEntries },
-      { data: maintenanceEntries },
-      { data: expenseEntries },
-      { data: pnlSummary },
-    ] = await Promise.all([
-      supabase
-        .from('invoices')
-        .select('bill_number, bill_date, vehicle_number, net_amount, payment_status, raw_data, trips')
-        .order('created_at', { ascending: false })
-        .limit(15),
-      supabase
-        .from('vehicles')
-        .select('registration_number, current_km')
-        .order('current_km', { ascending: false })
-        .limit(20),
-      supabase
-        .from('drivers')
-        .select('name, phone, rate_per_km, status, license_number')
-        .order('name', { ascending: true })
-        .limit(20),
-      supabase
-        .from('fuel_entries')
-        .select('vehicle_number, entry_date, bunk_name, liters, rate_per_liter, total_amount')
-        .order('created_at', { ascending: false })
-        .limit(15),
-      supabase
-        .from('maintenance_entries')
-        .select('vehicle_number, entry_date, category, description, amount, workshop_name')
-        .order('created_at', { ascending: false })
-        .limit(15),
-      supabase
-        .from('expense_entries')
-        .select('vehicle_number, entry_date, category, description, amount, payment_mode')
-        .order('created_at', { ascending: false })
-        .limit(15),
-      supabase
-        .from('vehicle_profit_and_loss_summary')
-        .select('*')
-        .limit(15),
-    ]);
+    // Fetch live records across all categories safely
+    let recentInvoices: any[] = [];
+    let vehicles: any[] = [];
+    let drivers: any[] = [];
+    let fuelEntries: any[] = [];
+    let maintenanceEntries: any[] = [];
+    let expenseEntries: any[] = [];
+    let pnlSummary: any[] = [];
+
+    try {
+      const results = await Promise.allSettled([
+        supabase
+          .from('invoices')
+          .select('bill_number, bill_date, vehicle_number, net_amount, payment_status, raw_data, trips')
+          .order('created_at', { ascending: false })
+          .limit(15),
+        supabase
+          .from('vehicles')
+          .select('registration_number, current_km')
+          .order('current_km', { ascending: false })
+          .limit(20),
+        supabase
+          .from('drivers')
+          .select('name, phone, rate_per_km, status, license_number')
+          .order('name', { ascending: true })
+          .limit(20),
+        supabase
+          .from('fuel_entries')
+          .select('vehicle_number, entry_date, bunk_name, liters, rate_per_liter, total_amount')
+          .order('created_at', { ascending: false })
+          .limit(15),
+        supabase
+          .from('maintenance_entries')
+          .select('vehicle_number, entry_date, category, description, amount, workshop_name')
+          .order('created_at', { ascending: false })
+          .limit(15),
+        supabase
+          .from('expense_entries')
+          .select('vehicle_number, entry_date, category, description, amount, payment_mode')
+          .order('created_at', { ascending: false })
+          .limit(15),
+        supabase
+          .from('vehicle_profit_and_loss_summary')
+          .select('*')
+          .limit(15),
+      ]);
+
+      if (results[0].status === 'fulfilled') recentInvoices = results[0].value?.data || [];
+      if (results[1].status === 'fulfilled') vehicles = results[1].value?.data || [];
+      if (results[2].status === 'fulfilled') drivers = results[2].value?.data || [];
+      if (results[3].status === 'fulfilled') fuelEntries = results[3].value?.data || [];
+      if (results[4].status === 'fulfilled') maintenanceEntries = results[4].value?.data || [];
+      if (results[5].status === 'fulfilled') expenseEntries = results[5].value?.data || [];
+      if (results[6].status === 'fulfilled') pnlSummary = results[6].value?.data || [];
+    } catch (dbErr) {
+      console.warn('Database query error in Telegram webhook:', dbErr);
+    }
 
     // Check if user intends to edit
     const isEditIntent =

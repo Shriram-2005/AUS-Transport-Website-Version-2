@@ -280,52 +280,64 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Fetch live database records across ALL 7 categories
+    // 2. Fetch live database records across ALL 7 categories safely
+    let recentInvoices: any[] = [];
+    let vehicles: any[] = [];
+    let drivers: any[] = [];
+    let fuelEntries: any[] = [];
+    let maintenanceEntries: any[] = [];
+    let expenseEntries: any[] = [];
+    let pnlSummary: any[] = [];
+
     const supabase = createClient();
-    const [
-      { data: recentInvoices },
-      { data: vehicles },
-      { data: drivers },
-      { data: fuelEntries },
-      { data: maintenanceEntries },
-      { data: expenseEntries },
-      { data: pnlSummary },
-    ] = await Promise.all([
-      supabase
-        .from('invoices')
-        .select('id, bill_number, bill_date, vehicle_number, net_amount, payment_status, raw_data, trips')
-        .order('created_at', { ascending: false })
-        .limit(20),
-      supabase
-        .from('vehicles')
-        .select('registration_number, current_km')
-        .order('current_km', { ascending: false })
-        .limit(30),
-      supabase
-        .from('drivers')
-        .select('name, phone, rate_per_km, status, license_number')
-        .order('name', { ascending: true })
-        .limit(30),
-      supabase
-        .from('fuel_entries')
-        .select('vehicle_number, entry_date, bunk_name, fuel_type, liters, rate_per_liter, total_amount')
-        .order('created_at', { ascending: false })
-        .limit(25),
-      supabase
-        .from('maintenance_entries')
-        .select('vehicle_number, entry_date, category, description, amount, workshop_name, odometer_km')
-        .order('created_at', { ascending: false })
-        .limit(25),
-      supabase
-        .from('expense_entries')
-        .select('vehicle_number, entry_date, category, description, amount, payment_mode, paid_to')
-        .order('created_at', { ascending: false })
-        .limit(25),
-      supabase
-        .from('vehicle_profit_and_loss_summary')
-        .select('*')
-        .limit(30),
-    ]);
+    try {
+      const results = await Promise.allSettled([
+        supabase
+          .from('invoices')
+          .select('id, bill_number, bill_date, vehicle_number, net_amount, payment_status, raw_data, trips')
+          .order('created_at', { ascending: false })
+          .limit(20),
+        supabase
+          .from('vehicles')
+          .select('registration_number, current_km')
+          .order('current_km', { ascending: false })
+          .limit(30),
+        supabase
+          .from('drivers')
+          .select('name, phone, rate_per_km, status, license_number')
+          .order('name', { ascending: true })
+          .limit(30),
+        supabase
+          .from('fuel_entries')
+          .select('vehicle_number, entry_date, bunk_name, fuel_type, liters, rate_per_liter, total_amount')
+          .order('created_at', { ascending: false })
+          .limit(25),
+        supabase
+          .from('maintenance_entries')
+          .select('vehicle_number, entry_date, category, description, amount, workshop_name, odometer_km')
+          .order('created_at', { ascending: false })
+          .limit(25),
+        supabase
+          .from('expense_entries')
+          .select('vehicle_number, entry_date, category, description, amount, payment_mode, paid_to')
+          .order('created_at', { ascending: false })
+          .limit(25),
+        supabase
+          .from('vehicle_profit_and_loss_summary')
+          .select('*')
+          .limit(30),
+      ]);
+
+      if (results[0].status === 'fulfilled') recentInvoices = results[0].value?.data || [];
+      if (results[1].status === 'fulfilled') vehicles = results[1].value?.data || [];
+      if (results[2].status === 'fulfilled') drivers = results[2].value?.data || [];
+      if (results[3].status === 'fulfilled') fuelEntries = results[3].value?.data || [];
+      if (results[4].status === 'fulfilled') maintenanceEntries = results[4].value?.data || [];
+      if (results[5].status === 'fulfilled') expenseEntries = results[5].value?.data || [];
+      if (results[6].status === 'fulfilled') pnlSummary = results[6].value?.data || [];
+    } catch (dbErr) {
+      console.warn('Database query error in AI chat:', dbErr);
+    }
 
     // Check if message is an edit/write attempt
     const lower = trimmedMsg.toLowerCase();
@@ -675,8 +687,13 @@ ${message}
     });
   } catch (err: any) {
     console.error('AI chat endpoint error:', err);
+    const msg = err?.message || 'The AI service is temporarily busy.';
+    let guidance = `> ${msg}\n\nYou can query any category directly: **invoices**, **pending payments**, **fuel logs**, **maintenance**, **expenses**, **drivers**, or **profit & loss**.`;
+    if (msg.includes('Permission denied') || msg.includes('service')) {
+      guidance = `> Google Cloud reported: *Permission denied on the service.*\n\n**To resolve:** In Google Cloud Console or Google AI Studio (https://aistudio.google.com/app/apikey), ensure the **Generative Language API** is enabled for your key, or generate a free key from Google AI Studio and save it as \`GEMINI_API_KEY\` in your Vercel Environment Variables.\n\n*Direct database queries remain fully operational across all categories.*`;
+    }
     return NextResponse.json({
-      text: `### Notice\n\n> ${err.message || 'The AI service is temporarily busy.'}\n\nYou can query any category directly: **invoices**, **pending payments**, **fuel logs**, **maintenance**, **expenses**, **drivers**, or **profit & loss**.`,
+      text: `### System Notice\n\n${guidance}`,
       isEditAuthorized: false,
       remainingSeconds: 0,
     });
