@@ -480,27 +480,55 @@ export function InvoiceManager() {
   const [mobileEditorTab, setMobileEditorTab] = useState<'form' | 'preview'>('form');
   const [isDesktop, setIsDesktop] = useState<boolean>(true);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+  const previewPanelRef = useRef<HTMLDivElement>(null);
   const isPrintingRef = useRef<boolean>(false);
+
+  // Dynamic screen/container auto-fit calculation for preview
+  const calculateFitZoom = useCallback(() => {
+    if (typeof window === 'undefined') return 0.85;
+    let availableW = 0;
+    if (previewPanelRef.current) {
+      const clientW = previewPanelRef.current.clientWidth;
+      if (clientW > 50) {
+        // Leave comfortable padding: 16px on mobile, 32px on desktop/tablet
+        availableW = clientW - (window.innerWidth < 640 ? 16 : 32);
+      }
+    }
+    if (!availableW) {
+      const w = window.innerWidth;
+      if (w < 1024) {
+        availableW = w - (w < 640 ? 20 : 36);
+      } else {
+        availableW = Math.round((w * (100 - leftPanelWidth)) / 100) - 48;
+      }
+    }
+    // 794px is base A4 width at 96 DPI (210mm)
+    const fitZoom = availableW / 794;
+    return Number(Math.min(1.25, Math.max(0.28, fitZoom)).toFixed(2));
+  }, [leftPanelWidth]);
 
   // Auto-fit A4 preview scale and detect desktop layout
   useEffect(() => {
     const updatePreviewScale = () => {
       if (typeof window !== 'undefined') {
-        const w = window.innerWidth;
-        setIsDesktop(w >= 1024);
-        if (w < 640) {
-          const availableW = Math.max(280, w - 24);
-          setPreviewZoom(Number(Math.min(0.55, availableW / 794).toFixed(2)));
-        } else if (w < 1024) {
-          const availableW = Math.max(500, w - 48);
-          setPreviewZoom(Number(Math.min(0.85, availableW / 794).toFixed(2)));
-        }
+        setIsDesktop(window.innerWidth >= 1024);
+        setPreviewZoom(calculateFitZoom());
       }
     };
     updatePreviewScale();
     window.addEventListener('resize', updatePreviewScale);
     return () => window.removeEventListener('resize', updatePreviewScale);
-  }, []);
+  }, [calculateFitZoom]);
+
+  // Recalculate preview scale whenever mobile user switches to preview tab
+  useEffect(() => {
+    if (mobileEditorTab === 'preview') {
+      const timer = setTimeout(() => {
+        setPreviewZoom(calculateFitZoom());
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [mobileEditorTab, calculateFitZoom]);
 
   // Load persisted width from localStorage
   useEffect(() => {
@@ -536,6 +564,9 @@ export function InvoiceManager() {
       try {
         localStorage.setItem('aus_invoice_splitter_width', String(leftPanelWidth));
       } catch {}
+      requestAnimationFrame(() => {
+        setPreviewZoom(calculateFitZoom());
+      });
     };
 
     document.body.style.userSelect = 'none';
@@ -2312,6 +2343,17 @@ export function InvoiceManager() {
             margin: 0 !important;
             padding: 0 !important;
             width: 100% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            height: auto !important;
+          }
+          .preview-scale-wrapper > div {
+            display: block !important;
+            transform: none !important;
+            position: static !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            height: auto !important;
           }
           .a4-page {
             width: 210mm !important;
@@ -3173,9 +3215,9 @@ export function InvoiceManager() {
           />
 
           {/* SEARCH & EXTENSIVE FILTERS BAR */}
-          <div className="p-4 rounded-2xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/70 shadow-xs space-y-3.5">
-            {/* Top Row: Full Search Bar & View Mode Switcher */}
-            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+          <div className="p-3.5 sm:p-4 rounded-2xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/70 shadow-xs space-y-3">
+            {/* Top Row: Full Search Bar & View Mode Switcher & Sort */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 text-gray-400 dark:text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
@@ -3183,7 +3225,7 @@ export function InvoiceManager() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search anything: Bill #, Vehicle, Driver, Place, Consignee, Amount, DC No..."
-                  className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 text-xs sm:text-sm font-medium shadow-xs hover:border-gray-400 dark:hover:border-zinc-600 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all placeholder:text-gray-400 dark:placeholder:text-zinc-500"
+                  className="w-full h-10 pl-9 pr-9 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 text-xs sm:text-sm font-medium shadow-xs hover:border-gray-400 dark:hover:border-zinc-600 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all placeholder:text-gray-400 dark:placeholder:text-zinc-500"
                 />
                 {searchTerm && (
                   <button
@@ -3197,585 +3239,149 @@ export function InvoiceManager() {
                 )}
               </div>
 
-              {/* View Mode Toggle: Cards vs Table */}
-              <div className="inline-flex items-center self-end md:self-auto rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-950 p-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('card')}
-                  title="Card View"
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    viewMode === 'card'
-                      ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-xs'
-                      : 'text-gray-500 dark:text-zinc-400 hover:text-black dark:hover:text-white'
-                  }`}
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  <span>Cards</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('table')}
-                  title="Table View"
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    viewMode === 'table'
-                      ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-xs'
-                      : 'text-gray-500 dark:text-zinc-400 hover:text-black dark:hover:text-white'
-                  }`}
-                >
-                  <TableIcon className="w-3.5 h-3.5" />
-                  <span>Table</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Bottom Row: Multi-Filter Dropdowns */}
-            <div className="flex flex-wrap items-center gap-2.5 pt-1 border-t border-gray-100 dark:border-white/5">
-              <span className="text-[11px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1 mr-1">
-                <Filter className="w-3 h-3" />
-                Filters:
-              </span>
-
-              {/* 1. Vehicle Filter */}
-              <div className="relative filter-dropdown-container">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenFilterDropdown(openFilterDropdown === 'vehicle' ? null : 'vehicle');
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-                    vehicleFilter
-                      ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
-                      : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
-                  }`}
-                >
-                  <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="truncate max-w-[130px]">{vehicleFilter || 'All Vehicles'}</span>
-                  <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'vehicle' ? 'rotate-180 text-blue-600' : ''}`} />
-                </button>
-
-                {openFilterDropdown === 'vehicle' && (
-                  <div
-                    className="absolute left-0 top-full mt-1.5 w-64 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1">
-                      <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Filter Vehicle</span>
-                      {vehicleFilter && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setVehicleFilter('');
-                            setOpenFilterDropdown(null);
-                          }}
-                          className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-                    <div className="max-h-56 overflow-y-auto space-y-0.5">
-                      <div
-                        onClick={() => {
-                          setVehicleFilter('');
-                          setOpenFilterDropdown(null);
-                        }}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                          !vehicleFilter
-                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                        }`}
-                      >
-                        <span>All Vehicles</span>
-                        {!vehicleFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      </div>
-                      {vehicleOptions.map((v) => {
-                        const isSelected = vehicleFilter === v;
-                        return (
-                          <div
-                            key={v}
-                            onClick={() => {
-                              setVehicleFilter(v);
-                              setOpenFilterDropdown(null);
-                            }}
-                            className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                                : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 truncate">
-                              <Truck className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
-                              <span className="truncate">{v}</span>
-                            </div>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 ml-2" />}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 2. Branch / Place Filter */}
-              <div className="relative filter-dropdown-container">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenFilterDropdown(openFilterDropdown === 'branch' ? null : 'branch');
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-                    branchFilter
-                      ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
-                      : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
-                  }`}
-                >
-                  <MapPin className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="truncate max-w-[130px]">
-                    {branchFilter === '__unassigned__' ? 'No Place' : (branchFilter || 'All Places')}
-                  </span>
-                  <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'branch' ? 'rotate-180 text-blue-600' : ''}`} />
-                </button>
-
-                {openFilterDropdown === 'branch' && (
-                  <div
-                    className="absolute left-0 top-full mt-1.5 w-72 sm:w-80 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-3 text-xs box-border"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 dark:border-zinc-800 px-1">
-                      <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Filter Place / Branch</span>
-                      {branchFilter && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBranchFilter('');
-                            setCurrentPage(1);
-                            setOpenFilterDropdown(null);
-                          }}
-                          className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-                    <div className="max-h-48 overflow-y-auto space-y-1 pr-0.5">
-                      <div
-                        onClick={() => {
-                          setBranchFilter('');
-                          setCurrentPage(1);
-                          setOpenFilterDropdown(null);
-                        }}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                          !branchFilter
-                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                        }`}
-                      >
-                        <span>All Places</span>
-                        {!branchFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      </div>
-
-                      <div
-                        onClick={() => {
-                          setBranchFilter('__unassigned__');
-                          setCurrentPage(1);
-                          setOpenFilterDropdown(null);
-                        }}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                          branchFilter === '__unassigned__'
-                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                        }`}
-                      >
-                        <span className="italic text-gray-500">No Place Assigned</span>
-                        {branchFilter === '__unassigned__' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      </div>
-
-                      {availableBranches.map((branch) => {
-                        const isSelected = branchFilter.toLowerCase() === branch.toLowerCase();
-                        return (
-                          <div
-                            key={branch}
-                            onClick={() => {
-                              setBranchFilter(branch);
-                              setCurrentPage(1);
-                              setOpenFilterDropdown(null);
-                            }}
-                            className={`group flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                                : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 truncate min-w-0">
-                              <MapPin className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
-                              <span className="truncate">{branch}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                              {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteBranch(branch);
-                                }}
-                                title={`Delete "${branch}"`}
-                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Add place footer */}
-                    <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        value={newBranchInput}
-                        onChange={(e) => setNewBranchInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            if (newBranchInput.trim()) {
-                              const trimmed = newBranchInput.trim();
-                              handleAddBranch();
-                              setBranchFilter(trimmed);
-                              setCurrentPage(1);
-                            }
-                          }
-                        }}
-                        placeholder="New place name..."
-                        className="flex-1 min-w-0 px-2.5 py-1.5 text-xs rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (newBranchInput.trim()) {
-                            const trimmed = newBranchInput.trim();
-                            handleAddBranch();
-                            setBranchFilter(trimmed);
-                            setCurrentPage(1);
-                          }
-                        }}
-                        className="shrink-0 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition-colors cursor-pointer"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 3. Driver Filter */}
-              <div className="relative filter-dropdown-container">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenFilterDropdown(openFilterDropdown === 'driver' ? null : 'driver');
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-                    driverFilter
-                      ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
-                      : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
-                  }`}
-                >
-                  <User className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="truncate max-w-[130px]">{driverFilter || 'All Drivers'}</span>
-                  <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'driver' ? 'rotate-180 text-blue-600' : ''}`} />
-                </button>
-
-                {openFilterDropdown === 'driver' && (
-                  <div
-                    className="absolute left-0 top-full mt-1.5 w-64 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1">
-                      <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Filter Driver</span>
-                      {driverFilter && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDriverFilter('');
-                            setOpenFilterDropdown(null);
-                          }}
-                          className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-                    <div className="max-h-56 overflow-y-auto space-y-0.5">
-                      <div
-                        onClick={() => {
-                          setDriverFilter('');
-                          setOpenFilterDropdown(null);
-                        }}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                          !driverFilter
-                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                        }`}
-                      >
-                        <span>All Drivers</span>
-                        {!driverFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      </div>
-                      {driverOptions.map((d) => {
-                        const isSelected = driverFilter === d;
-                        return (
-                          <div
-                            key={d}
-                            onClick={() => {
-                              setDriverFilter(d || '');
-                              setOpenFilterDropdown(null);
-                            }}
-                            className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                                : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 truncate">
-                              <User className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
-                              <span className="truncate">{d}</span>
-                            </div>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 ml-2" />}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 4. Payment Status Filter */}
-              <div className="relative filter-dropdown-container">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenFilterDropdown(openFilterDropdown === 'status' ? null : 'status');
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-                    statusFilter
-                      ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
-                      : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
-                  }`}
-                >
-                  <CreditCard className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="truncate max-w-[130px]">
-                    {statusFilter === 'paid' ? 'Received (Paid)' : statusFilter === 'unpaid' ? 'Not Received' : 'All Payments'}
-                  </span>
-                  <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'status' ? 'rotate-180 text-blue-600' : ''}`} />
-                </button>
-
-                {openFilterDropdown === 'status' && (
-                  <div
-                    className="absolute left-0 top-full mt-1.5 w-60 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1">
-                      <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Payment Status</span>
-                      {statusFilter && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStatusFilter('');
-                            setOpenFilterDropdown(null);
-                          }}
-                          className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-                    <div className="space-y-0.5">
-                      <div
-                        onClick={() => {
-                          setStatusFilter('');
-                          setOpenFilterDropdown(null);
-                        }}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                          !statusFilter
-                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                        }`}
-                      >
-                        <span>All Payments</span>
-                        {!statusFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      </div>
-                      <div
-                        onClick={() => {
-                          setStatusFilter('paid');
-                          setOpenFilterDropdown(null);
-                        }}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                          statusFilter === 'paid'
-                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                          <span>Received (Paid)</span>
-                        </div>
-                        {statusFilter === 'paid' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      </div>
-                      <div
-                        onClick={() => {
-                          setStatusFilter('unpaid');
-                          setOpenFilterDropdown(null);
-                        }}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                          statusFilter === 'unpaid'
-                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-amber-500" />
-                          <span>Not Received (Pending)</span>
-                        </div>
-                        {statusFilter === 'unpaid' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 5. Lock Status Filter */}
-              <div className="relative filter-dropdown-container">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenFilterDropdown(openFilterDropdown === 'lock' ? null : 'lock');
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-                    lockFilter
-                      ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
-                      : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
-                  }`}
-                >
-                  <Lock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="truncate max-w-[130px]">
-                    {lockFilter === 'locked' ? 'Locked' : lockFilter === 'unlocked' ? 'Unlocked' : 'All Lock States'}
-                  </span>
-                  <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'lock' ? 'rotate-180 text-blue-600' : ''}`} />
-                </button>
-
-                {openFilterDropdown === 'lock' && (
-                  <div
-                    className="absolute left-0 top-full mt-1.5 w-56 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1">
-                      <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Lock Status</span>
-                      {lockFilter && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setLockFilter('');
-                            setOpenFilterDropdown(null);
-                          }}
-                          className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-                    <div className="space-y-0.5">
-                      <div
-                        onClick={() => {
-                          setLockFilter('');
-                          setOpenFilterDropdown(null);
-                        }}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                          !lockFilter
-                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                        }`}
-                      >
-                        <span>All Lock States</span>
-                        {!lockFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      </div>
-                      <div
-                        onClick={() => {
-                          setLockFilter('locked');
-                          setOpenFilterDropdown(null);
-                        }}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                          lockFilter === 'locked'
-                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Lock className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
-                          <span>Locked</span>
-                        </div>
-                        {lockFilter === 'locked' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      </div>
-                      <div
-                        onClick={() => {
-                          setLockFilter('unlocked');
-                          setOpenFilterDropdown(null);
-                        }}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                          lockFilter === 'unlocked'
-                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Unlock className="w-3.5 h-3.5 text-gray-400" />
-                          <span>Unlocked</span>
-                        </div>
-                        {lockFilter === 'unlocked' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 6. Month Filter */}
-              {monthOptions.length > 0 && (
-                <div className="relative filter-dropdown-container">
+              {/* Action Controls: Sort Dropdown & Cards vs Table View Mode */}
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Sort Order Dropdown */}
+                <div className="relative flex-1 md:flex-none filter-dropdown-container">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setOpenFilterDropdown(openFilterDropdown === 'month' ? null : 'month');
+                      setOpenFilterDropdown(openFilterDropdown === 'sort' ? null : 'sort');
                     }}
-                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-                      monthFilter
+                    className="w-full md:w-auto h-10 inline-flex items-center justify-between md:justify-start gap-1.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-800 dark:text-zinc-200 border-gray-300 dark:border-zinc-700 shadow-xs"
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <ArrowUpDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                      <span className="truncate max-w-[125px] sm:max-w-[150px]">
+                        {sortOrder === 'bill_desc'
+                          ? 'Bill # (Highest)'
+                          : sortOrder === 'bill_asc'
+                          ? 'Bill # (Lowest)'
+                          : sortOrder === 'date_desc'
+                          ? 'Date (Newest)'
+                          : sortOrder === 'date_asc'
+                          ? 'Date (Oldest)'
+                          : sortOrder === 'amount_desc'
+                          ? 'Amount (Highest)'
+                          : 'Amount (Lowest)'}
+                      </span>
+                    </div>
+                    <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'sort' ? 'rotate-180 text-blue-600' : ''}`} />
+                  </button>
+
+                  {openFilterDropdown === 'sort' && (
+                    <div
+                      className="absolute right-0 top-full mt-1.5 w-56 max-w-[calc(100vw-2rem)] rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1 font-bold text-gray-800 dark:text-zinc-200 text-xs">
+                        Sort Bills By
+                      </div>
+                      <div className="space-y-0.5">
+                        {[
+                          { value: 'bill_desc', label: 'Bill # (Highest 1st)' },
+                          { value: 'bill_asc', label: 'Bill # (Lowest 1st)' },
+                          { value: 'date_desc', label: 'Date (Newest 1st)' },
+                          { value: 'date_asc', label: 'Date (Oldest 1st)' },
+                          { value: 'amount_desc', label: 'Amount (Highest 1st)' },
+                          { value: 'amount_asc', label: 'Amount (Lowest 1st)' },
+                        ].map((opt) => {
+                          const isSelected = sortOrder === opt.value;
+                          return (
+                            <div
+                              key={opt.value}
+                              onClick={() => {
+                                setSortOrder(opt.value);
+                                setOpenFilterDropdown(null);
+                              }}
+                              className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                                isSelected
+                                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                                  : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                              }`}
+                            >
+                              <span>{opt.label}</span>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* View Mode Toggle: Cards vs Table */}
+                <div className="h-10 inline-flex items-center rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-950 p-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('card')}
+                    title="Card View"
+                    className={`h-full flex items-center gap-1.5 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      viewMode === 'card'
+                        ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-xs'
+                        : 'text-gray-500 dark:text-zinc-400 hover:text-black dark:hover:text-white'
+                    }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Cards</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('table')}
+                    title="Table View"
+                    className={`h-full flex items-center gap-1.5 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      viewMode === 'table'
+                        ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-xs'
+                        : 'text-gray-500 dark:text-zinc-400 hover:text-black dark:hover:text-white'
+                    }`}
+                  >
+                    <TableIcon className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Table</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Row: Multi-Filter Dropdowns (Clean horizontal scroll on mobile, flex-wrap on desktop) */}
+            <div className="pt-2 border-t border-gray-100 dark:border-white/5">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none no-scrollbar md:flex-wrap md:overflow-visible">
+                <span className="text-[11px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1 shrink-0 mr-0.5">
+                  <Filter className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Filters</span>
+                </span>
+
+                {/* 1. Vehicle Filter */}
+                <div className="relative shrink-0 filter-dropdown-container">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenFilterDropdown(openFilterDropdown === 'vehicle' ? null : 'vehicle');
+                    }}
+                    className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      vehicleFilter
                         ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
                         : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
                     }`}
                   >
-                    <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                    <span className="truncate max-w-[130px]">
-                      {monthFilter ? formatMonthLabel(monthFilter) : 'All Months'}
-                    </span>
-                    <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'month' ? 'rotate-180 text-blue-600' : ''}`} />
+                    <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <span className="truncate max-w-[130px]">{vehicleFilter || 'All Vehicles'}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'vehicle' ? 'rotate-180 text-blue-600' : ''}`} />
                   </button>
 
-                  {openFilterDropdown === 'month' && (
+                  {openFilterDropdown === 'vehicle' && (
                     <div
-                      className="absolute left-0 top-full mt-1.5 w-60 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
+                      className="absolute left-0 top-full mt-1.5 w-64 max-w-[calc(100vw-2rem)] rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1">
-                        <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Filter Month</span>
-                        {monthFilter && (
+                        <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Filter Vehicle</span>
+                        {vehicleFilter && (
                           <button
                             type="button"
                             onClick={() => {
-                              setMonthFilter('');
+                              setVehicleFilter('');
                               setOpenFilterDropdown(null);
                             }}
                             className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
@@ -3787,25 +3393,25 @@ export function InvoiceManager() {
                       <div className="max-h-56 overflow-y-auto space-y-0.5">
                         <div
                           onClick={() => {
-                            setMonthFilter('');
+                            setVehicleFilter('');
                             setOpenFilterDropdown(null);
                           }}
                           className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                            !monthFilter
+                            !vehicleFilter
                               ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
                               : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
                           }`}
                         >
-                          <span>All Months</span>
-                          {!monthFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                          <span>All Vehicles</span>
+                          {!vehicleFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
                         </div>
-                        {monthOptions.map((m) => {
-                          const isSelected = monthFilter === m;
+                        {vehicleOptions.map((v) => {
+                          const isSelected = vehicleFilter === v;
                           return (
                             <div
-                              key={m}
+                              key={v}
                               onClick={() => {
-                                setMonthFilter(m);
+                                setVehicleFilter(v);
                                 setOpenFilterDropdown(null);
                               }}
                               className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
@@ -3815,8 +3421,8 @@ export function InvoiceManager() {
                               }`}
                             >
                               <div className="flex items-center gap-2 truncate">
-                                <Calendar className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
-                                <span className="truncate">{formatMonthLabel(m)}</span>
+                                <Truck className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
+                                <span className="truncate">{v}</span>
                               </div>
                               {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 ml-2" />}
                             </div>
@@ -3826,87 +3432,530 @@ export function InvoiceManager() {
                     </div>
                   )}
                 </div>
-              )}
 
-              {/* 7. Sort Order Dropdown */}
-              <div className="relative ml-auto filter-dropdown-container">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpenFilterDropdown(openFilterDropdown === 'sort' ? null : 'sort');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-800 dark:text-zinc-200 border-gray-300 dark:border-zinc-700 shadow-xs"
-                >
-                  <ArrowUpDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="truncate max-w-[150px]">
-                    {sortOrder === 'bill_desc'
-                      ? 'Bill # (Highest 1st)'
-                      : sortOrder === 'bill_asc'
-                      ? 'Bill # (Lowest 1st)'
-                      : sortOrder === 'date_desc'
-                      ? 'Date (Newest 1st)'
-                      : sortOrder === 'date_asc'
-                      ? 'Date (Oldest 1st)'
-                      : sortOrder === 'amount_desc'
-                      ? 'Amount (Highest 1st)'
-                      : 'Amount (Lowest 1st)'}
-                  </span>
-                  <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'sort' ? 'rotate-180 text-blue-600' : ''}`} />
-                </button>
-
-                {openFilterDropdown === 'sort' && (
-                  <div
-                    className="absolute right-0 top-full mt-1.5 w-56 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
-                    onClick={(e) => e.stopPropagation()}
+                {/* 2. Branch / Place Filter */}
+                <div className="relative shrink-0 filter-dropdown-container">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenFilterDropdown(openFilterDropdown === 'branch' ? null : 'branch');
+                    }}
+                    className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      branchFilter
+                        ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
+                        : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
+                    }`}
                   >
-                    <div className="pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1 font-bold text-gray-800 dark:text-zinc-200 text-xs">
-                      Sort Bills By
-                    </div>
-                    <div className="space-y-0.5">
-                      {[
-                        { value: 'bill_desc', label: 'Bill # (Highest 1st)' },
-                        { value: 'bill_asc', label: 'Bill # (Lowest 1st)' },
-                        { value: 'date_desc', label: 'Date (Newest 1st)' },
-                        { value: 'date_asc', label: 'Date (Oldest 1st)' },
-                        { value: 'amount_desc', label: 'Amount (Highest 1st)' },
-                        { value: 'amount_asc', label: 'Amount (Lowest 1st)' },
-                      ].map((opt) => {
-                        const isSelected = sortOrder === opt.value;
-                        return (
-                          <div
-                            key={opt.value}
+                    <MapPin className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <span className="truncate max-w-[130px]">
+                      {branchFilter === '__unassigned__' ? 'No Place' : (branchFilter || 'All Places')}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'branch' ? 'rotate-180 text-blue-600' : ''}`} />
+                  </button>
+
+                  {openFilterDropdown === 'branch' && (
+                    <div
+                      className="absolute left-0 top-full mt-1.5 w-72 sm:w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-3 text-xs box-border"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 dark:border-zinc-800 px-1">
+                        <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Filter Place / Branch</span>
+                        {branchFilter && (
+                          <button
+                            type="button"
                             onClick={() => {
-                              setSortOrder(opt.value);
+                              setBranchFilter('');
+                              setCurrentPage(1);
+                              setOpenFilterDropdown(null);
+                            }}
+                            className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="max-h-48 overflow-y-auto space-y-1 pr-0.5">
+                        <div
+                          onClick={() => {
+                            setBranchFilter('');
+                            setCurrentPage(1);
+                            setOpenFilterDropdown(null);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                            !branchFilter
+                              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                              : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <span>All Places</span>
+                          {!branchFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                        </div>
+
+                        <div
+                          onClick={() => {
+                            setBranchFilter('__unassigned__');
+                            setCurrentPage(1);
+                            setOpenFilterDropdown(null);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                            branchFilter === '__unassigned__'
+                              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                              : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <span className="italic text-gray-500">No Place Assigned</span>
+                          {branchFilter === '__unassigned__' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                        </div>
+
+                        {availableBranches.map((branch) => {
+                          const isSelected = branchFilter.toLowerCase() === branch.toLowerCase();
+                          return (
+                            <div
+                              key={branch}
+                              onClick={() => {
+                                setBranchFilter(branch);
+                                setCurrentPage(1);
+                                setOpenFilterDropdown(null);
+                              }}
+                              className={`group flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                                isSelected
+                                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                                  : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate min-w-0">
+                                <MapPin className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
+                                <span className="truncate">{branch}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteBranch(branch);
+                                  }}
+                                  title={`Delete "${branch}"`}
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Add place footer */}
+                      <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={newBranchInput}
+                          onChange={(e) => setNewBranchInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (newBranchInput.trim()) {
+                                const trimmed = newBranchInput.trim();
+                                handleAddBranch();
+                                setBranchFilter(trimmed);
+                                setCurrentPage(1);
+                              }
+                            }
+                          }}
+                          placeholder="New place name..."
+                          className="flex-1 min-w-0 px-2.5 py-1.5 text-xs rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newBranchInput.trim()) {
+                              const trimmed = newBranchInput.trim();
+                              handleAddBranch();
+                              setBranchFilter(trimmed);
+                              setCurrentPage(1);
+                            }
+                          }}
+                          className="shrink-0 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition-colors cursor-pointer"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Driver Filter */}
+                <div className="relative shrink-0 filter-dropdown-container">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenFilterDropdown(openFilterDropdown === 'driver' ? null : 'driver');
+                    }}
+                    className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      driverFilter
+                        ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
+                        : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
+                    }`}
+                  >
+                    <User className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <span className="truncate max-w-[130px]">{driverFilter || 'All Drivers'}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'driver' ? 'rotate-180 text-blue-600' : ''}`} />
+                  </button>
+
+                  {openFilterDropdown === 'driver' && (
+                    <div
+                      className="absolute left-0 sm:left-auto sm:right-0 md:left-0 top-full mt-1.5 w-64 max-w-[calc(100vw-2rem)] rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1">
+                        <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Filter Driver</span>
+                        {driverFilter && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDriverFilter('');
+                              setOpenFilterDropdown(null);
+                            }}
+                            className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="max-h-56 overflow-y-auto space-y-0.5">
+                        <div
+                          onClick={() => {
+                            setDriverFilter('');
+                            setOpenFilterDropdown(null);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                            !driverFilter
+                              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                              : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <span>All Drivers</span>
+                          {!driverFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                        </div>
+                        {driverOptions.map((d) => {
+                          const isSelected = driverFilter === d;
+                          return (
+                            <div
+                              key={d}
+                              onClick={() => {
+                                setDriverFilter(d || '');
+                                setOpenFilterDropdown(null);
+                              }}
+                              className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                                isSelected
+                                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                                  : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <User className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
+                                <span className="truncate">{d}</span>
+                              </div>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 ml-2" />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Payment Status Filter */}
+                <div className="relative shrink-0 filter-dropdown-container">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenFilterDropdown(openFilterDropdown === 'status' ? null : 'status');
+                    }}
+                    className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      statusFilter
+                        ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
+                        : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
+                    }`}
+                  >
+                    <CreditCard className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <span className="truncate max-w-[130px]">
+                      {statusFilter === 'paid' ? 'Received (Paid)' : statusFilter === 'unpaid' ? 'Not Received' : 'All Payments'}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'status' ? 'rotate-180 text-blue-600' : ''}`} />
+                  </button>
+
+                  {openFilterDropdown === 'status' && (
+                    <div
+                      className="absolute left-0 sm:left-auto sm:right-0 md:left-0 top-full mt-1.5 w-60 max-w-[calc(100vw-2rem)] rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1">
+                        <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Payment Status</span>
+                        {statusFilter && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStatusFilter('');
+                              setOpenFilterDropdown(null);
+                            }}
+                            className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-0.5">
+                        <div
+                          onClick={() => {
+                            setStatusFilter('');
+                            setOpenFilterDropdown(null);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                            !statusFilter
+                              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                              : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <span>All Payments</span>
+                          {!statusFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                        </div>
+                        <div
+                          onClick={() => {
+                            setStatusFilter('paid');
+                            setOpenFilterDropdown(null);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                            statusFilter === 'paid'
+                              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                              : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <span>Received (Paid)</span>
+                          </div>
+                          {statusFilter === 'paid' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                        </div>
+                        <div
+                          onClick={() => {
+                            setStatusFilter('unpaid');
+                            setOpenFilterDropdown(null);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                            statusFilter === 'unpaid'
+                              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                              : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-amber-500" />
+                            <span>Not Received (Pending)</span>
+                          </div>
+                          {statusFilter === 'unpaid' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. Lock Status Filter */}
+                <div className="relative shrink-0 filter-dropdown-container">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenFilterDropdown(openFilterDropdown === 'lock' ? null : 'lock');
+                    }}
+                    className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      lockFilter
+                        ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
+                        : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
+                    }`}
+                  >
+                    <Lock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <span className="truncate max-w-[130px]">
+                      {lockFilter === 'locked' ? 'Locked' : lockFilter === 'unlocked' ? 'Unlocked' : 'All Lock States'}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'lock' ? 'rotate-180 text-blue-600' : ''}`} />
+                  </button>
+
+                  {openFilterDropdown === 'lock' && (
+                    <div
+                      className="absolute right-0 sm:right-auto sm:left-0 md:right-0 top-full mt-1.5 w-56 max-w-[calc(100vw-2rem)] rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1">
+                        <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Lock Status</span>
+                        {lockFilter && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLockFilter('');
+                              setOpenFilterDropdown(null);
+                            }}
+                            className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-0.5">
+                        <div
+                          onClick={() => {
+                            setLockFilter('');
+                            setOpenFilterDropdown(null);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                            !lockFilter
+                              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                              : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <span>All Lock States</span>
+                          {!lockFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                        </div>
+                        <div
+                          onClick={() => {
+                            setLockFilter('locked');
+                            setOpenFilterDropdown(null);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                            lockFilter === 'locked'
+                              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                              : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Lock className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                            <span>Locked</span>
+                          </div>
+                          {lockFilter === 'locked' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                        </div>
+                        <div
+                          onClick={() => {
+                            setLockFilter('unlocked');
+                            setOpenFilterDropdown(null);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                            lockFilter === 'unlocked'
+                              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                              : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Unlock className="w-3.5 h-3.5 text-gray-400" />
+                            <span>Unlocked</span>
+                          </div>
+                          {lockFilter === 'unlocked' && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 6. Month Filter */}
+                {monthOptions.length > 0 && (
+                  <div className="relative shrink-0 filter-dropdown-container">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenFilterDropdown(openFilterDropdown === 'month' ? null : 'month');
+                      }}
+                      className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                        monthFilter
+                          ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-xs'
+                          : 'bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300 border-gray-300 dark:border-zinc-700'
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                      <span className="truncate max-w-[130px]">
+                        {monthFilter ? formatMonthLabel(monthFilter) : 'All Months'}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 opacity-60 shrink-0 transition-transform ${openFilterDropdown === 'month' ? 'rotate-180 text-blue-600' : ''}`} />
+                    </button>
+
+                    {openFilterDropdown === 'month' && (
+                      <div
+                        className="absolute right-0 top-full mt-1.5 w-60 max-w-[calc(100vw-2rem)] rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-2.5 text-xs box-border"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-gray-100 dark:border-zinc-800 px-1">
+                          <span className="font-bold text-gray-800 dark:text-zinc-200 text-xs">Filter Month</span>
+                          {monthFilter && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMonthFilter('');
+                                setOpenFilterDropdown(null);
+                              }}
+                              className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        <div className="max-h-56 overflow-y-auto space-y-0.5">
+                          <div
+                            onClick={() => {
+                              setMonthFilter('');
                               setOpenFilterDropdown(null);
                             }}
                             className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
-                              isSelected
+                              !monthFilter
                                 ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
                                 : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
                             }`}
                           >
-                            <span>{opt.label}</span>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                            <span>All Months</span>
+                            {!monthFilter && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
                           </div>
-                        );
-                      })}
-                    </div>
+                          {monthOptions.map((m) => {
+                            const isSelected = monthFilter === m;
+                            return (
+                              <div
+                                key={m}
+                                onClick={() => {
+                                  setMonthFilter(m);
+                                  setOpenFilterDropdown(null);
+                                }}
+                                className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition-colors ${
+                                  isSelected
+                                    ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                                    : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-zinc-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <Calendar className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
+                                  <span className="truncate">{formatMonthLabel(m)}</span>
+                                </div>
+                                {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 ml-2" />}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
 
-              {/* Reset Filters Button */}
-              {activeFilterCount > 0 && (
-                <button
-                  type="button"
-                  onClick={handleResetFilters}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors cursor-pointer"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Reset Filters ({activeFilterCount})</span>
-                </button>
-              )}
+                {/* Reset Filters Button */}
+                {activeFilterCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="h-9 inline-flex items-center gap-1.5 px-3 rounded-xl text-xs font-semibold bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors cursor-pointer shrink-0 ml-auto md:ml-0"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Filters ({activeFilterCount})</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -4417,7 +4466,12 @@ export function InvoiceManager() {
             </button>
             <button
               type="button"
-              onClick={() => setMobileEditorTab('preview')}
+              onClick={() => {
+                setMobileEditorTab('preview');
+                requestAnimationFrame(() => {
+                  setPreviewZoom(calculateFitZoom());
+                });
+              }}
               className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer select-none active:scale-[0.98] ${
                 mobileEditorTab === 'preview'
                   ? 'bg-white dark:bg-zinc-900 text-black dark:text-white shadow-xs'
@@ -5540,6 +5594,7 @@ export function InvoiceManager() {
             {/* RIGHT PREVIEW PANEL: Render on Desktop OR when Preview tab is active on mobile/tablet */}
             {(isDesktop || mobileEditorTab === 'preview') && (
               <div
+                ref={previewPanelRef}
                 className="preview-panel"
                 style={{
                   width: isDesktop ? `calc(${100 - leftPanelWidth}% - 12px)` : '100%',
@@ -5555,7 +5610,7 @@ export function InvoiceManager() {
                 <div className="h-3.5 w-px bg-gray-200 dark:bg-white/10 hidden sm:block" />
                 <button
                   type="button"
-                  onClick={() => setPreviewZoom((z) => Math.max(0.35, Number((z - 0.05).toFixed(2))))}
+                  onClick={() => setPreviewZoom((z) => Math.max(0.28, Number((z - 0.05).toFixed(2))))}
                   title="Zoom Out"
                   aria-label="Zoom Out"
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300 cursor-pointer transition-colors"
@@ -5567,7 +5622,7 @@ export function InvoiceManager() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setPreviewZoom((z) => Math.min(1.25, Number((z + 0.05).toFixed(2))))}
+                  onClick={() => setPreviewZoom((z) => Math.min(1.30, Number((z + 0.05).toFixed(2))))}
                   title="Zoom In"
                   aria-label="Zoom In"
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-600 dark:text-gray-300 cursor-pointer transition-colors"
@@ -5577,18 +5632,12 @@ export function InvoiceManager() {
                 <div className="h-3.5 w-px bg-gray-200 dark:bg-white/10" />
                 <button
                   type="button"
-                  onClick={() => {
-                    if (typeof window !== 'undefined') {
-                      const w = window.innerWidth;
-                      if (w < 640) setPreviewZoom(Number(Math.min(0.55, (w - 24) / 794).toFixed(2)));
-                      else if (w < 1024) setPreviewZoom(Number(Math.min(0.85, (w - 48) / 794).toFixed(2)));
-                      else setPreviewZoom(0.82);
-                    }
-                  }}
+                  onClick={() => setPreviewZoom(calculateFitZoom())}
                   title="Fit to Screen"
-                  className="px-2 py-0.5 rounded text-[11px] font-medium hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 cursor-pointer transition-colors"
+                  className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer transition-colors flex items-center gap-1"
                 >
-                  Fit
+                  <Maximize2 className="w-3 h-3" />
+                  <span>Fit</span>
                 </button>
                 <button
                   type="button"
@@ -5602,13 +5651,27 @@ export function InvoiceManager() {
 
               {/* Scaling container for A4 sheet */}
               <div
-                className="preview-scale-wrapper transition-transform duration-100 origin-top flex flex-col items-center"
+                className="preview-scale-wrapper transition-all duration-150 flex flex-col items-center mx-auto"
                 style={{
-                  transform: `scale(${previewZoom})`,
-                  transformOrigin: 'top center',
-                  marginBottom: previewZoom < 1 ? `calc(297mm * (${previewZoom} - 1))` : '0px',
+                  width: `${Math.round(794 * previewZoom)}px`,
+                  minWidth: `${Math.round(794 * previewZoom)}px`,
+                  maxWidth: '100%',
+                  height: `${Math.round(1123 * previewZoom)}px`,
+                  position: 'relative',
                 }}
               >
+                <div
+                  style={{
+                    width: '794px',
+                    minWidth: '794px',
+                    height: '1123px',
+                    transform: `scale(${previewZoom})`,
+                    transformOrigin: 'top left',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                  }}
+                >
                 <div className="a4-page text-[11px] leading-snug" id="previewContent">
                   {/* Watermark (direct match from reference-repo/assets/js/invoice.js line 915-917) */}
                   <div
@@ -6027,6 +6090,7 @@ export function InvoiceManager() {
                       </div>
                     </div>
                   </div>
+                </div>
                 </div>
               </div>
             </div>
