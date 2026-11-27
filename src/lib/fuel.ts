@@ -1,6 +1,8 @@
 // Fuel entries and master bunks store with LocalStorage persistence, live custom events, and Supabase sync
 // Independent from freight invoices
 
+import type { BillData } from './invoices';
+
 export interface FuelEntry {
   id: string;            // Standard RFC-4122 UUID
   vehicleNumber: string; // Registration number in uppercase
@@ -20,6 +22,18 @@ export interface FuelSummaryStats {
   totalAmount: number;
   averageRate: number;
   entryCount: number;
+}
+
+export interface VehicleMileageStat {
+  vehicleNumber: string;
+  model?: string;
+  tripCount: number;
+  totalKm: number;
+  fuelEntriesCount: number;
+  totalLiters: number;
+  totalFuelCost: number;
+  mileageKmPerLiter: number;
+  costPerKm: number;
 }
 
 const STORAGE_KEY = 'aus_transport_fuel_entries_v1';
@@ -270,6 +284,88 @@ export function calculateFuelSummary(entries: FuelEntry[]): FuelSummaryStats {
     averageRate: Math.round(averageRate * 100) / 100,
     entryCount: entries.length,
   };
+}
+
+/**
+ * Calculates mileage (KM/L) and fuel cost per KM for each vehicle
+ * using running kilometers from invoices/trips and fuel liters from fuel entries.
+ */
+export function calculateVehicleMileageStats(
+  vehicles: { registrationNumber: string; model?: string }[],
+  bills: BillData[],
+  fuelEntries: FuelEntry[],
+  fromDate?: string,
+  toDate?: string
+): VehicleMileageStat[] {
+  const normalizeVeh = (v?: string) => (v || '').replace(/\s+/g, '').trim().toUpperCase();
+  const hasFrom = Boolean(fromDate && fromDate.trim());
+  const hasTo = Boolean(toDate && toDate.trim());
+  const parsedFrom = hasFrom ? parseDateToTimestamp(fromDate) : 0;
+  const parsedTo = hasTo ? parseDateToTimestamp(toDate) : 0;
+  const fromTime = hasFrom && parsedFrom > 0 ? parsedFrom : 0;
+  const toTime = hasTo && parsedTo > 0 ? parsedTo + 86399999 : Infinity;
+
+  const isWithinPeriod = (dateStr?: string): boolean => {
+    if (!hasFrom && !hasTo) return true;
+    if (!dateStr || !dateStr.trim()) return false;
+    const t = parseDateToTimestamp(dateStr);
+    if (t === 0) return false;
+    return t >= fromTime && t <= toTime;
+  };
+
+  return vehicles.map((v) => {
+    const targetKey = normalizeVeh(v.registrationNumber);
+
+    let totalKm = 0;
+    let tripCount = 0;
+
+    for (const bill of bills) {
+      if (normalizeVeh(bill.vehicleNumber) !== targetKey) continue;
+      const visible = bill.visibleTrips ?? bill.trips?.length ?? 0;
+      const trips = (bill.trips || []).slice(0, visible);
+      for (const trip of trips) {
+        if (trip.enabled === false) continue;
+        const tripDate = (trip.date || bill.date || '').trim();
+        if (!isWithinPeriod(tripDate)) continue;
+        const runningKm = Math.max(0, (Number(trip.closingKm) || 0) - (Number(trip.startingKm) || 0));
+        if (runningKm > 0) {
+          totalKm += runningKm;
+          tripCount += 1;
+        }
+      }
+    }
+
+    let totalLiters = 0;
+    let totalFuelCost = 0;
+    let fuelEntriesCount = 0;
+
+    for (const f of fuelEntries) {
+      if (normalizeVeh(f.vehicleNumber) !== targetKey) continue;
+      if (!isWithinPeriod(f.date)) continue;
+      totalLiters += Number(f.liters) || 0;
+      totalFuelCost += Number(f.totalAmount) || 0;
+      fuelEntriesCount += 1;
+    }
+
+    const roundedLiters = Math.round(totalLiters * 100) / 100;
+    const roundedCost = Math.round(totalFuelCost * 100) / 100;
+    const mileageKmPerLiter =
+      totalKm > 0 && roundedLiters > 0 ? Math.round((totalKm / roundedLiters) * 100) / 100 : 0;
+    const costPerKm =
+      totalKm > 0 && roundedCost > 0 ? Math.round((roundedCost / totalKm) * 100) / 100 : 0;
+
+    return {
+      vehicleNumber: v.registrationNumber,
+      model: v.model,
+      tripCount,
+      totalKm,
+      fuelEntriesCount,
+      totalLiters: roundedLiters,
+      totalFuelCost: roundedCost,
+      mileageKmPerLiter,
+      costPerKm,
+    };
+  });
 }
 
 /**

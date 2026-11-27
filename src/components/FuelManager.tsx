@@ -27,6 +27,7 @@ import {
   ChevronRight,
   ArrowUp,
   ArrowDown,
+  Gauge,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -41,11 +42,13 @@ import {
   addStoredBunkName,
   filterFuelEntries,
   calculateFuelSummary,
+  calculateVehicleMileageStats,
   numberToWords,
   parseDateToTimestamp,
   FUEL_ENTRIES_CHANGE_EVENT,
   FUEL_BUNKS_CHANGE_EVENT
 } from '@/lib/fuel';
+import { BillData, getStoredInvoices, INVOICES_CHANGE_EVENT } from '@/lib/invoices';
 import { Vehicle, getStoredVehicles, VEHICLES_CHANGE_EVENT } from '@/lib/vehicles';
 import { CustomDatePicker } from './CustomDatePicker';
 import { KpiDashboardBar } from './KpiDashboardBar';
@@ -71,9 +74,15 @@ function getTodayDDMMYYYY(): string {
 export function FuelManager() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+  const [bills, setBills] = useState<BillData[]>([]);
   const [bunkList, setBunkList] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  // Mileage table period filters
+  const [mileagePeriod, setMileagePeriod] = useState<'all' | 'month' | '3months' | 'custom'>('all');
+  const [mileageFromDate, setMileageFromDate] = useState<string>('');
+  const [mileageToDate, setMileageToDate] = useState<string>('');
 
   // Card reordering state
   const [isReorderMode, setIsReorderMode] = useState(false);
@@ -129,10 +138,11 @@ export function FuelManager() {
   const [statementToDate, setStatementToDate] = useState<string>('');
   const [isPrinting, setIsPrinting] = useState(false);
 
-  // Load vehicles, fuel entries, and bunks on mount
+  // Load vehicles, fuel entries, invoices, and bunks on mount
   useEffect(() => {
     setVehicles(getStoredVehicles());
     setFuelEntries(getStoredFuelEntries());
+    setBills(getStoredInvoices());
     setBunkList(getStoredBunkNames());
 
     const handleVehiclesUpdate = (e: CustomEvent<Vehicle[]>) => {
@@ -151,6 +161,14 @@ export function FuelManager() {
       }
     };
 
+    const handleInvoicesUpdate = (e: CustomEvent<BillData[]>) => {
+      if (e.detail) {
+        setBills(e.detail);
+      } else {
+        setBills(getStoredInvoices());
+      }
+    };
+
     const handleBunksUpdate = (e: CustomEvent<string[]>) => {
       if (e.detail) {
         setBunkList(e.detail);
@@ -161,11 +179,13 @@ export function FuelManager() {
 
     window.addEventListener(VEHICLES_CHANGE_EVENT as any, handleVehiclesUpdate);
     window.addEventListener(FUEL_ENTRIES_CHANGE_EVENT as any, handleFuelUpdate);
+    window.addEventListener(INVOICES_CHANGE_EVENT as any, handleInvoicesUpdate);
     window.addEventListener(FUEL_BUNKS_CHANGE_EVENT as any, handleBunksUpdate);
 
     return () => {
       window.removeEventListener(VEHICLES_CHANGE_EVENT as any, handleVehiclesUpdate);
       window.removeEventListener(FUEL_ENTRIES_CHANGE_EVENT as any, handleFuelUpdate);
+      window.removeEventListener(INVOICES_CHANGE_EVENT as any, handleInvoicesUpdate);
       window.removeEventListener(FUEL_BUNKS_CHANGE_EVENT as any, handleBunksUpdate);
     };
   }, []);
@@ -255,6 +275,44 @@ export function FuelManager() {
             }]);
           }
         }
+      }
+      // 4. Sync invoices for mileage calculation
+      try {
+        const { data: iData, error: iErr } = await supabase.from('invoices').select('*');
+        if (!iErr && iData) {
+          setBills(
+            iData.map((item: any) => {
+              if (item.raw_data && item.raw_data.trips) {
+                return {
+                  ...item.raw_data,
+                  id: item.id,
+                  billNumber: item.bill_number,
+                  date: item.bill_date,
+                  vehicleNumber: item.vehicle_number,
+                  status: item.payment_status || item.raw_data.status || 'unpaid',
+                };
+              }
+              return {
+                id: item.id,
+                billNumber: item.bill_number,
+                date: item.bill_date,
+                vehicleNumber: item.vehicle_number,
+                activeTrip: 1,
+                visibleTrips: 1,
+                trips: item.trips || [],
+                keralaRtoEnabled: false,
+                keralaRtoMultiplier: 0,
+                keralaRtoAmount: 0,
+                dieselAvgRate: 0,
+                rupeesInWordsMode: 'auto',
+                rupeesInWordsText: '',
+                status: 'unpaid',
+              };
+            })
+          );
+        }
+      } catch (iSyncErr) {
+        console.warn('Could not sync invoices for mileage calculation:', iSyncErr);
       }
     } catch (err) {
       console.error('Error refreshing fuel entries from Supabase:', err);
@@ -355,6 +413,68 @@ export function FuelManager() {
     const list = !q ? vehicles : vehicles.filter((v) => v.registrationNumber.toLowerCase().includes(q));
     return applyCardOrder(list, (v) => v.registrationNumber, 'fuel');
   }, [vehicles, searchQuery, cardOrderVersion]);
+
+  // Apply period preset for Mileage table
+  const applyMileagePeriod = useCallback((period: 'all' | 'month' | '3months' | 'custom') => {
+    setMileagePeriod(period);
+    const today = new Date();
+    const formatDDMMYYYY = (d: Date) =>
+      `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    const todayStr = formatDDMMYYYY(today);
+
+    if (period === 'all') {
+      setMileageFromDate('');
+      setMileageToDate('');
+    } else if (period === 'month') {
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      setMileageFromDate(formatDDMMYYYY(startOfMonth));
+      setMileageToDate(todayStr);
+    } else if (period === '3months') {
+      const past = new Date(today.getFullYear(), today.getMonth() - 3, today.getDate());
+      setMileageFromDate(formatDDMMYYYY(past));
+      setMileageToDate(todayStr);
+    }
+  }, []);
+
+  // Compute mileage stats per available vehicle
+  const mileageStats = useMemo(() => {
+    return calculateVehicleMileageStats(
+      filteredVehicles,
+      bills,
+      fuelEntries,
+      mileageFromDate,
+      mileageToDate
+    );
+  }, [filteredVehicles, bills, fuelEntries, mileageFromDate, mileageToDate]);
+
+  const mileageTotals = useMemo(() => {
+    let totalKm = 0;
+    let totalLiters = 0;
+    let totalFuelCost = 0;
+    let totalTrips = 0;
+    let totalFuelReceipts = 0;
+
+    for (const s of mileageStats) {
+      totalKm += s.totalKm;
+      totalLiters += s.totalLiters;
+      totalFuelCost += s.totalFuelCost;
+      totalTrips += s.tripCount;
+      totalFuelReceipts += s.fuelEntriesCount;
+    }
+
+    const avgMileage = totalKm > 0 && totalLiters > 0 ? Math.round((totalKm / totalLiters) * 100) / 100 : 0;
+    const avgCostPerKm = totalKm > 0 && totalFuelCost > 0 ? Math.round((totalFuelCost / totalKm) * 100) / 100 : 0;
+
+    return {
+      totalKm,
+      totalLiters: Math.round(totalLiters * 100) / 100,
+      totalFuelCost: Math.round(totalFuelCost * 100) / 100,
+      totalTrips,
+      totalFuelReceipts,
+      avgMileage,
+      avgCostPerKm,
+    };
+  }, [mileageStats]);
 
   // Open Add Fuel Entry modal (optionally preselecting a vehicle)
   // Ensures Price Per Liter starts completely blank with no pre-existing rate
@@ -1358,6 +1478,179 @@ export function FuelManager() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* =========================================================================
+          SEPARATE VEHICLE MILEAGE & FUEL EFFICIENCY TABLE
+      ========================================================================= */}
+      {filteredVehicles.length > 0 && (
+        <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-xs overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-zinc-800 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                <Gauge className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight">
+                  Vehicle Mileage &amp; Fuel Efficiency
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-zinc-400">
+                  Calculated from invoice trip kilometers divided by fuel consumed (KM/L) for available vehicles
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                { id: 'all', label: 'All Time' },
+                { id: 'month', label: 'This Month' },
+                { id: '3months', label: '3 Months' },
+                { id: 'custom', label: 'Custom Range' },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyMileagePeriod(p.id as 'all' | 'month' | '3months' | 'custom')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    mileagePeriod === p.id
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-300'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {mileagePeriod === 'custom' && (
+            <div className="px-4 sm:px-5 py-3 bg-gray-50/70 dark:bg-zinc-800/30 border-b border-gray-200 dark:border-zinc-800 flex flex-wrap items-center gap-3">
+              <div className="w-44">
+                <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">From Date</label>
+                <CustomDatePicker value={mileageFromDate} onChange={(val) => setMileageFromDate(val)} placeholder="Start Date" />
+              </div>
+              <div className="w-44">
+                <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">To Date</label>
+                <CustomDatePicker value={mileageToDate} onChange={(val) => setMileageToDate(val)} placeholder="End Date" />
+              </div>
+              {(mileageFromDate || mileageToDate) && (
+                <button
+                  type="button"
+                  onClick={() => applyMileagePeriod('all')}
+                  className="mt-4 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-zinc-800 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 bg-gray-50/80 dark:bg-zinc-800/60">
+                  <th className="py-3 px-4 text-left">Vehicle</th>
+                  <th className="py-3 px-3 text-center">Trips</th>
+                  <th className="py-3 px-3 text-right">Total KM Ran</th>
+                  <th className="py-3 px-3 text-right">Fuel Consumed</th>
+                  <th className="py-3 px-3 text-right">Total Fuel Cost</th>
+                  <th className="py-3 px-3 text-right">Mileage (KM/L)</th>
+                  <th className="py-3 px-4 text-right">Cost / KM</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-zinc-800/70">
+                {mileageStats.map((stat) => (
+                  <tr
+                    key={stat.vehicleNumber}
+                    className="hover:bg-gray-50/80 dark:hover:bg-zinc-800/40 transition-colors"
+                  >
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200/70 dark:border-amber-900/60 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                          <Truck className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="font-mono font-bold text-gray-900 dark:text-zinc-100 text-xs sm:text-sm">
+                            {stat.vehicleNumber}
+                          </div>
+                          {stat.model && (
+                            <div className="text-[11px] text-gray-500 dark:text-zinc-400">
+                              {stat.model}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-center font-mono font-semibold text-gray-700 dark:text-zinc-300">
+                      {stat.tripCount}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-gray-900 dark:text-zinc-100 whitespace-nowrap">
+                      {stat.totalKm.toLocaleString('en-IN')} KM
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-gray-700 dark:text-zinc-300 whitespace-nowrap">
+                      <div>{stat.totalLiters.toFixed(2)} L</div>
+                      <div className="text-[10px] text-gray-400 dark:text-zinc-500">
+                        {stat.fuelEntriesCount} {stat.fuelEntriesCount === 1 ? 'receipt' : 'receipts'}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-semibold text-gray-900 dark:text-zinc-100 whitespace-nowrap">
+                      Rs.{Math.round(stat.totalFuelCost).toLocaleString('en-IN')}
+                    </td>
+                    <td className="py-3 px-3 text-right whitespace-nowrap">
+                      {stat.mileageKmPerLiter > 0 ? (
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-lg font-mono font-extrabold text-xs ${
+                            stat.mileageKmPerLiter >= 4
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/60'
+                              : 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/60'
+                          }`}
+                        >
+                          {stat.mileageKmPerLiter.toFixed(2)} KM/L
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 dark:text-zinc-500 italic">
+                          {stat.totalKm === 0 && stat.totalLiters === 0
+                            ? 'No data'
+                            : stat.totalKm === 0
+                            ? 'No KM data'
+                            : 'No fuel data'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono font-bold text-gray-700 dark:text-zinc-300 whitespace-nowrap">
+                      {stat.costPerKm > 0 ? `Rs.${stat.costPerKm.toFixed(2)}` : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/70 font-bold text-xs">
+                  <td className="py-3 px-4 text-gray-900 dark:text-zinc-100 uppercase tracking-wider">
+                    Fleet Summary ({mileageStats.length} {mileageStats.length === 1 ? 'Vehicle' : 'Vehicles'})
+                  </td>
+                  <td className="py-3 px-3 text-center font-mono text-gray-900 dark:text-zinc-100">
+                    {mileageTotals.totalTrips}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-gray-900 dark:text-zinc-100 whitespace-nowrap">
+                    {mileageTotals.totalKm.toLocaleString('en-IN')} KM
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-gray-900 dark:text-zinc-100 whitespace-nowrap">
+                    {mileageTotals.totalLiters.toFixed(2)} L
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-gray-900 dark:text-zinc-100 whitespace-nowrap">
+                    Rs.{Math.round(mileageTotals.totalFuelCost).toLocaleString('en-IN')}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
+                    {mileageTotals.avgMileage > 0 ? `${mileageTotals.avgMileage.toFixed(2)} KM/L` : '-'}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono text-gray-900 dark:text-zinc-100 whitespace-nowrap">
+                    {mileageTotals.avgCostPerKm > 0 ? `Rs.${mileageTotals.avgCostPerKm.toFixed(2)}` : '-'}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
 
