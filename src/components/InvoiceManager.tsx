@@ -163,6 +163,7 @@ export interface BillData {
   rupeesInWordsMode: 'auto' | 'manual';
   rupeesInWordsText: string;
   status: 'paid' | 'unpaid';
+  paymentReceivedDate?: string;
   locked?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -465,6 +466,10 @@ export function InvoiceManager() {
   const [tdsModalBill, setTdsModalBill] = useState<BillData | null>(null);
   const [tdsInput, setTdsInput] = useState('1');
 
+  // Payment received date modal state
+  const [paymentModalBill, setPaymentModalBill] = useState<BillData | null>(null);
+  const [paymentDateInput, setPaymentDateInput] = useState('');
+
   // Dropdown menus
   const [activeMenuId, setActiveMenuId] = useState<string | number | null>(null);
   const [particularDropdownOpen, setParticularDropdownOpen] = useState(false);
@@ -632,6 +637,7 @@ export function InvoiceManager() {
                 consigneePreset: item.raw_data.consigneePreset || item.consignee?.preset || 'broiler_branch',
                 consigneeOverride: item.raw_data.consigneeOverride ?? item.consignee?.override ?? false,
                 status: item.payment_status || item.raw_data.status || 'unpaid',
+                paymentReceivedDate: item.raw_data.paymentReceivedDate || '',
                 locked: item.is_locked ?? item.raw_data.locked ?? false,
                 updatedAt: item.updated_at || item.created_at,
               };
@@ -988,6 +994,7 @@ export function InvoiceManager() {
           const matchesMain =
             String(bill.billNumber).toLowerCase().includes(search) ||
             (bill.date && bill.date.toLowerCase().includes(search)) ||
+            (bill.paymentReceivedDate && bill.paymentReceivedDate.toLowerCase().includes(search)) ||
             (bill.vehicleNumber && bill.vehicleNumber.toLowerCase().includes(search)) ||
             (bill.branch && bill.branch.toLowerCase().includes(search)) ||
             (bill.consigneeName && bill.consigneeName.toLowerCase().includes(search)) ||
@@ -1325,14 +1332,27 @@ export function InvoiceManager() {
   }, []);
 
   // Dashboard actions
-  const handleTogglePaymentStatus = async (billId: string | number, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
+  const formatTodayDDMMYYYY = () => {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+  };
+
+  const applyPaymentStatusUpdate = async (
+    billId: string | number,
+    newStatus: 'paid' | 'unpaid',
+    receivedDate: string
+  ) => {
+    const nowIso = new Date().toISOString();
     const updatedBills = bills.map((b) => {
       if (b.id === billId || b.billNumber === billId) {
-        const newStatus: 'paid' | 'unpaid' = b.status === 'paid' ? 'unpaid' : 'paid';
-        // Auto-lock when marked as received
         const newLocked = newStatus === 'paid' ? true : b.locked;
-        return { ...b, status: newStatus, locked: newLocked, updatedAt: new Date().toISOString() };
+        return {
+          ...b,
+          status: newStatus,
+          paymentReceivedDate: newStatus === 'paid' ? receivedDate : '',
+          locked: newLocked,
+          updatedAt: nowIso,
+        };
       }
       return b;
     });
@@ -1349,14 +1369,46 @@ export function InvoiceManager() {
           .update({
             payment_status: target.status,
             is_locked: target.locked,
-            updated_at: new Date().toISOString(),
+            raw_data: {
+              ...target,
+              status: target.status,
+              paymentReceivedDate: target.paymentReceivedDate || '',
+              locked: target.locked,
+              updatedAt: nowIso,
+            },
+            updated_at: nowIso,
           })
           .eq('bill_number', target.billNumber);
       } catch (err) {
         console.error('Error updating status in Supabase:', err);
       }
     }
+  };
+
+  const handleTogglePaymentStatus = async (billId: string | number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const target = bills.find((b) => b.id === billId || b.billNumber === billId);
+    if (!target) return;
+
+    if (target.status !== 'paid') {
+      // Ask user to enter the payment received date via date picker modal
+      setPaymentModalBill(target);
+      setPaymentDateInput(target.paymentReceivedDate || formatTodayDDMMYYYY());
+      setActiveMenuId(null);
+      return;
+    }
+
+    // Already paid -> mark as Not Received and clear received date
+    await applyPaymentStatusUpdate(billId, 'unpaid', '');
     setActiveMenuId(null);
+  };
+
+  const handleConfirmPaymentReceived = async () => {
+    if (!paymentModalBill) return;
+    const chosenDate = paymentDateInput.trim() || formatTodayDDMMYYYY();
+    const targetId = paymentModalBill.id || paymentModalBill.billNumber;
+    setPaymentModalBill(null);
+    await applyPaymentStatusUpdate(targetId, 'paid', chosenDate);
   };
 
   const handleToggleLock = async (billId: string | number) => {
@@ -4256,6 +4308,15 @@ export function InvoiceManager() {
                           {paymentStatus}
                         </span>
                       </div>
+                      {bill.status === 'paid' && bill.paymentReceivedDate && (
+                        <div className="bill-card-meta-row">
+                          <span className="bill-card-meta-label">Received Date</span>
+                          <span className="bill-card-meta-value text-emerald-700 dark:text-emerald-400 font-semibold font-mono flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            <span>{bill.paymentReceivedDate}</span>
+                          </span>
+                        </div>
+                      )}
                       {bill.locked && (
                         <div className="bill-card-meta-row">
                           <span className="bill-card-meta-label text-green-600 dark:text-green-400 font-semibold">
@@ -4330,12 +4391,20 @@ export function InvoiceManager() {
                         <td>{bill.visibleTrips} trips</td>
                         <td className="font-bold text-green-600 dark:text-emerald-400">₹ {totalAmount.toLocaleString('en-IN')}</td>
                         <td>
-                          <span
-                            className={`bill-payment-status ${statusClass} cursor-pointer`}
-                            onClick={(e) => handleTogglePaymentStatus(bill.billNumber, e)}
-                          >
-                            {paymentStatus}
-                          </span>
+                          <div className="flex flex-col items-start gap-0.5">
+                            <span
+                              className={`bill-payment-status ${statusClass} cursor-pointer`}
+                              onClick={(e) => handleTogglePaymentStatus(bill.billNumber, e)}
+                            >
+                              {paymentStatus}
+                            </span>
+                            {bill.status === 'paid' && bill.paymentReceivedDate && (
+                              <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-mono font-medium flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                <span>{bill.paymentReceivedDate}</span>
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="text-gray-500 dark:text-zinc-400 text-xs">{updatedDateStr}</td>
                         <td className="text-right">
@@ -6890,6 +6959,82 @@ export function InvoiceManager() {
                 className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white active:scale-95 transition-all shadow-sm cursor-pointer"
               >
                 Save TDS Rate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PAYMENT RECEIVED DATE MODAL */}
+      {paymentModalBill && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setPaymentModalBill(null)}
+        >
+          <div
+            className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 max-w-md w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white m-0">
+                    Mark Payment as Received
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-zinc-400 m-0">
+                    Bill #{paymentModalBill.billNumber} - {paymentModalBill.vehicleNumber}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentModalBill(null)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div className="p-3 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-gray-200 dark:border-zinc-800 flex items-center justify-between text-xs">
+                <span className="text-gray-600 dark:text-zinc-400 font-medium">Total Receivable Amount:</span>
+                <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-sm">
+                  ₹ {calculateBillReceivable(paymentModalBill).toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-zinc-300 mb-1.5">
+                  Payment Received Date
+                </label>
+                <CustomDatePicker
+                  value={paymentDateInput}
+                  onChange={(val) => setPaymentDateInput(val)}
+                  placeholder="DD-MM-YYYY"
+                />
+                <p className="text-[11px] text-gray-500 dark:text-zinc-400 mt-1.5">
+                  This bill will be marked as Received, locked automatically, and display this date.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPaymentModalBill(null)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmPaymentReceived}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 transition-all shadow-sm cursor-pointer"
+              >
+                Confirm Payment Received
               </button>
             </div>
           </div>

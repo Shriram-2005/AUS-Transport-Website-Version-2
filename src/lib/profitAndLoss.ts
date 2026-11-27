@@ -95,15 +95,32 @@ export function parseDateToTimestamp(dateStr?: string): number {
 }
 
 /**
+ * Normalizes a vehicle registration number for reliable matching across modules
+ */
+function normalizeVehicleKey(v?: string): string {
+  return (v || '').replace(/\s+/g, '').trim().toUpperCase();
+}
+
+/**
  * Checks whether a given date string is within the [fromDate, toDate] interval (inclusive)
  */
 export function isDateInRange(dateStr?: string, fromDate?: string, toDate?: string): boolean {
-  if (!dateStr) return false;
-  const t = parseDateToTimestamp(dateStr);
-  if (t === 0) return true;
+  const hasFrom = Boolean(fromDate && fromDate.trim());
+  const hasTo = Boolean(toDate && toDate.trim());
 
-  const fromT = fromDate ? parseDateToTimestamp(fromDate) : 0;
-  const toT = toDate ? parseDateToTimestamp(toDate) + 86399999 : Infinity;
+  // When no date filter is active ("All Time"), include all records
+  if (!hasFrom && !hasTo) return true;
+
+  // When a date filter IS active, records without a valid parseable date are excluded
+  if (!dateStr || !dateStr.trim()) return false;
+  const t = parseDateToTimestamp(dateStr);
+  if (t === 0) return false;
+
+  const parsedFrom = hasFrom ? parseDateToTimestamp(fromDate) : 0;
+  const parsedTo = hasTo ? parseDateToTimestamp(toDate) : 0;
+
+  const fromT = hasFrom && parsedFrom > 0 ? parsedFrom : 0;
+  const toT = hasTo && parsedTo > 0 ? parsedTo + 86399999 : Infinity;
 
   return t >= fromT && t <= toT;
 }
@@ -121,7 +138,8 @@ export function calculateVehiclePnl(
   toDate?: string,
   driversList: Driver[] = []
 ): VehiclePnlSummary {
-  const cleanVehicle = (vehicleNumber || '').trim().toUpperCase();
+  const cleanVehicleDisplay = (vehicleNumber || '').trim().toUpperCase();
+  const cleanVehicleKey = normalizeVehicleKey(vehicleNumber);
 
   // Driver rates lookup map
   const driverRateMap = new Map<string, number>();
@@ -163,8 +181,8 @@ export function calculateVehiclePnl(
 
   // 1. Process Invoices (Revenue and Driver Salaries for this vehicle)
   for (const bill of bills) {
-    const billVehicle = (bill.vehicleNumber || '').trim().toUpperCase();
-    if (cleanVehicle && billVehicle !== cleanVehicle) continue;
+    const billVehicleKey = normalizeVehicleKey(bill.vehicleNumber);
+    if (cleanVehicleKey && billVehicleKey !== cleanVehicleKey) continue;
 
     // Use bill.date from non-editable invoice header
     const billDate = (bill.date || '').trim();
@@ -207,8 +225,8 @@ export function calculateVehiclePnl(
   // 2. Process Fuel Entries
   let totalFuel = 0;
   for (const f of fuelEntries) {
-    const fVeh = (f.vehicleNumber || '').trim().toUpperCase();
-    if (cleanVehicle && fVeh !== cleanVehicle) continue;
+    const fVehKey = normalizeVehicleKey(f.vehicleNumber);
+    if (cleanVehicleKey && fVehKey !== cleanVehicleKey) continue;
     if (!isDateInRange(f.date, fromDate, toDate)) continue;
 
     const m = getOrCreateMonth(f.date);
@@ -220,8 +238,8 @@ export function calculateVehiclePnl(
   // 3. Process Repair & Maintenance Entries
   let totalMaintenance = 0;
   for (const maint of maintenanceEntries) {
-    const mVeh = (maint.vehicleNumber || '').trim().toUpperCase();
-    if (cleanVehicle && mVeh !== cleanVehicle) continue;
+    const mVehKey = normalizeVehicleKey(maint.vehicleNumber);
+    if (cleanVehicleKey && mVehKey !== cleanVehicleKey) continue;
     if (!isDateInRange(maint.date, fromDate, toDate)) continue;
 
     const m = getOrCreateMonth(maint.date);
@@ -234,8 +252,8 @@ export function calculateVehiclePnl(
   let totalExpenses = 0;
   for (const exp of expenses) {
     if (isTollExpense(exp)) continue;
-    const eVeh = (exp.vehicleNumber || '').trim().toUpperCase();
-    if (cleanVehicle && eVeh !== cleanVehicle) continue;
+    const eVehKey = normalizeVehicleKey(exp.vehicleNumber);
+    if (cleanVehicleKey && eVehKey !== cleanVehicleKey) continue;
     if (!isDateInRange(exp.date, fromDate, toDate)) continue;
 
     const m = getOrCreateMonth(exp.date);
@@ -244,37 +262,47 @@ export function calculateVehiclePnl(
     m.expensesCost += cost;
   }
 
-  // Calculate monthly totals and margins
+  // Calculate monthly totals and margins (round components first so totals always reconcile)
   const monthlyBreakdown = Object.values(monthMap).map((m) => {
-    const tCost = m.fuelCost + m.maintenanceCost + m.driverSalary + m.expensesCost;
-    const net = m.revenue - tCost;
-    const margin = m.revenue > 0 ? (net / m.revenue) * 100 : 0;
+    const rev = Math.round(m.revenue);
+    const fuel = Math.round(m.fuelCost);
+    const maint = Math.round(m.maintenanceCost);
+    const driver = Math.round(m.driverSalary);
+    const exp = Math.round(m.expensesCost);
+    const tCost = fuel + maint + driver + exp;
+    const net = rev - tCost;
+    const margin = rev > 0 ? (net / rev) * 100 : 0;
     return {
       ...m,
-      revenue: Math.round(m.revenue),
-      fuelCost: Math.round(m.fuelCost),
-      maintenanceCost: Math.round(m.maintenanceCost),
-      driverSalary: Math.round(m.driverSalary),
-      expensesCost: Math.round(m.expensesCost),
-      totalCost: Math.round(tCost),
-      netProfit: Math.round(net),
+      revenue: rev,
+      fuelCost: fuel,
+      maintenanceCost: maint,
+      driverSalary: driver,
+      expensesCost: exp,
+      totalCost: tCost,
+      netProfit: net,
       profitMargin: Math.round(margin * 10) / 10,
     };
   }).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
 
-  const grandTotalCost = totalFuel + totalMaintenance + totalDriverSalary + totalExpenses;
-  const netProfit = totalRevenue - grandTotalCost;
-  const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+  const roundedRevenue = Math.round(totalRevenue);
+  const roundedFuel = Math.round(totalFuel);
+  const roundedMaintenance = Math.round(totalMaintenance);
+  const roundedDriverSalary = Math.round(totalDriverSalary);
+  const roundedExpenses = Math.round(totalExpenses);
+  const grandTotalCost = roundedFuel + roundedMaintenance + roundedDriverSalary + roundedExpenses;
+  const netProfit = roundedRevenue - grandTotalCost;
+  const profitMargin = roundedRevenue > 0 ? (netProfit / roundedRevenue) * 100 : 0;
 
   return {
-    vehicleNumber: cleanVehicle,
-    revenue: Math.round(totalRevenue),
-    fuelCost: Math.round(totalFuel),
-    maintenanceCost: Math.round(totalMaintenance),
-    driverSalary: Math.round(totalDriverSalary),
-    expensesCost: Math.round(totalExpenses),
-    totalCost: Math.round(grandTotalCost),
-    netProfit: Math.round(netProfit),
+    vehicleNumber: cleanVehicleDisplay,
+    revenue: roundedRevenue,
+    fuelCost: roundedFuel,
+    maintenanceCost: roundedMaintenance,
+    driverSalary: roundedDriverSalary,
+    expensesCost: roundedExpenses,
+    totalCost: grandTotalCost,
+    netProfit,
     profitMargin: Math.round(profitMargin * 10) / 10,
     tripCount: totalTripCount,
     totalKm: totalKmRan,
@@ -293,7 +321,8 @@ export function calculateFleetPnl(
   expenses: ExpenseEntry[],
   fromDate?: string,
   toDate?: string,
-  driversList: Driver[] = []
+  driversList: Driver[] = [],
+  includeGeneralExpenses: boolean = true
 ): FleetPnlSummary {
   let totalRevenue = 0;
   let totalFuel = 0;
@@ -320,14 +349,18 @@ export function calculateFleetPnl(
   }
 
   // Add any non-vehicle GENERAL expenses (excluding FASTag & Toll expenses)
-  for (const exp of expenses) {
-    if (isTollExpense(exp)) continue;
-    const eVeh = (exp.vehicleNumber || 'GENERAL').trim().toUpperCase();
-    if (eVeh === 'GENERAL' || eVeh === 'OFFICE') {
-      if (isDateInRange(exp.date, fromDate, toDate)) {
-        totalExpenses += Number(exp.amount) || 0;
+  if (includeGeneralExpenses) {
+    let generalExpensesRaw = 0;
+    for (const exp of expenses) {
+      if (isTollExpense(exp)) continue;
+      const eVeh = (exp.vehicleNumber || 'GENERAL').trim().toUpperCase();
+      if (eVeh === 'GENERAL' || eVeh === 'OFFICE') {
+        if (isDateInRange(exp.date, fromDate, toDate)) {
+          generalExpensesRaw += Number(exp.amount) || 0;
+        }
       }
     }
+    totalExpenses += Math.round(generalExpensesRaw);
   }
 
   const grandTotalCost = totalFuel + totalMaintenance + totalDriverSalary + totalExpenses;
@@ -335,13 +368,13 @@ export function calculateFleetPnl(
   const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
   return {
-    totalRevenue: Math.round(totalRevenue),
-    totalFuel: Math.round(totalFuel),
-    totalMaintenance: Math.round(totalMaintenance),
-    totalDriverSalary: Math.round(totalDriverSalary),
-    totalExpenses: Math.round(totalExpenses),
-    totalCost: Math.round(grandTotalCost),
-    netProfit: Math.round(netProfit),
+    totalRevenue,
+    totalFuel,
+    totalMaintenance,
+    totalDriverSalary,
+    totalExpenses,
+    totalCost: grandTotalCost,
+    netProfit,
     profitMargin: Math.round(profitMargin * 10) / 10,
     vehiclesCount: vehicles.length,
   };

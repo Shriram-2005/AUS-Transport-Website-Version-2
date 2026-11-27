@@ -90,11 +90,11 @@ export function ProfitAndLossManager() {
       setFromDate(formatDateDDMMYYYY(startOfMonth));
       setToDate(todayStr);
     } else if (preset === '3months') {
-      const past = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+      const past = new Date(today.getFullYear(), today.getMonth() - 3, today.getDate());
       setFromDate(formatDateDDMMYYYY(past));
       setToDate(todayStr);
     } else if (preset === '6months') {
-      const past = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+      const past = new Date(today.getFullYear(), today.getMonth() - 6, today.getDate());
       setFromDate(formatDateDDMMYYYY(past));
       setToDate(todayStr);
     } else if (preset === '1year') {
@@ -143,8 +143,8 @@ export function ProfitAndLossManager() {
       const supabase = createClient();
 
       // Vehicles
-      const { data: vData } = await supabase.from('vehicles').select('*');
-      if (vData && vData.length > 0) {
+      const { data: vData, error: vError } = await supabase.from('vehicles').select('*');
+      if (!vError && vData) {
         setVehicles(vData.map((v: any) => ({
           id: v.id,
           registrationNumber: (v.registration_number || '').trim().toUpperCase(),
@@ -155,8 +155,8 @@ export function ProfitAndLossManager() {
       }
 
       // Invoices
-      const { data: iData } = await supabase.from('invoices').select('*');
-      if (iData && iData.length > 0) {
+      const { data: iData, error: iError } = await supabase.from('invoices').select('*');
+      if (!iError && iData) {
         setBills(iData.map((item: any) => {
           if (item.raw_data && item.raw_data.trips) {
             return {
@@ -165,7 +165,7 @@ export function ProfitAndLossManager() {
               billNumber: item.bill_number,
               date: item.bill_date,
               vehicleNumber: item.vehicle_number,
-              status: item.payment_status || 'unpaid',
+              status: item.payment_status || item.raw_data.status || 'unpaid',
             };
           }
           return {
@@ -188,8 +188,8 @@ export function ProfitAndLossManager() {
       }
 
       // Fuel
-      const { data: fData } = await supabase.from('fuel_entries').select('*');
-      if (fData && fData.length > 0) {
+      const { data: fData, error: fError } = await supabase.from('fuel_entries').select('*');
+      if (!fError && fData) {
         setFuelEntries(fData.map((f: any) => ({
           id: f.id,
           vehicleNumber: (f.vehicle_number || '').trim().toUpperCase(),
@@ -204,8 +204,8 @@ export function ProfitAndLossManager() {
       }
 
       // Maintenance
-      const { data: mData } = await supabase.from('maintenance_entries').select('*');
-      if (mData && mData.length > 0) {
+      const { data: mData, error: mError } = await supabase.from('maintenance_entries').select('*');
+      if (!mError && mData) {
         setMaintenanceEntries(mData.map((m: any) => ({
           id: m.id,
           vehicleNumber: (m.vehicle_number || '').trim().toUpperCase(),
@@ -220,8 +220,8 @@ export function ProfitAndLossManager() {
       }
 
       // Expenses
-      const { data: eData } = await supabase.from('expense_entries').select('*');
-      if (eData && eData.length > 0) {
+      const { data: eData, error: eError } = await supabase.from('expense_entries').select('*');
+      if (!eError && eData) {
         setExpenses(eData.map((e: any) => ({
           id: e.id,
           vehicleNumber: (e.vehicle_number || 'GENERAL').trim().toUpperCase(),
@@ -236,8 +236,8 @@ export function ProfitAndLossManager() {
       }
 
       // Drivers
-      const { data: dData } = await supabase.from('drivers').select('*');
-      if (dData && dData.length > 0) {
+      const { data: dData, error: dError } = await supabase.from('drivers').select('*');
+      if (!dError && dData) {
         setDrivers(dData.map((d: any) => ({
           id: d.id,
           name: d.name,
@@ -279,17 +279,28 @@ export function ProfitAndLossManager() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Filter vehicles by search query
+  // Filter vehicles by search query (normalize spaces so "TN57" matches "TN 57")
   const filteredVehicles = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = searchQuery.trim().toLowerCase().replace(/\s+/g, '');
     if (!q) return vehicles;
-    return vehicles.filter((v) => v.registrationNumber.toLowerCase().includes(q));
+    return vehicles.filter((v) => v.registrationNumber.toLowerCase().replace(/\s+/g, '').includes(q));
   }, [vehicles, searchQuery]);
 
-  // Global Fleet P&L Summary
+  // Global Fleet P&L Summary (reflects both active search filter and date range filter)
   const fleetPnl = useMemo(() => {
-    return calculateFleetPnl(vehicles, bills, fuelEntries, maintenanceEntries, expenses, fromDate, toDate, drivers);
-  }, [vehicles, bills, fuelEntries, maintenanceEntries, expenses, fromDate, toDate, drivers]);
+    const isSearching = searchQuery.trim() !== '';
+    return calculateFleetPnl(
+      filteredVehicles,
+      bills,
+      fuelEntries,
+      maintenanceEntries,
+      expenses,
+      fromDate,
+      toDate,
+      drivers,
+      !isSearching
+    );
+  }, [filteredVehicles, bills, fuelEntries, maintenanceEntries, expenses, fromDate, toDate, drivers, searchQuery]);
 
   // Calculate P&L for each vehicle in the current date range
   const vehiclePnlList = useMemo(() => {
@@ -631,7 +642,7 @@ export function ProfitAndLossManager() {
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
           <div className="space-y-1">
             <span className="text-xs uppercase font-bold tracking-wider text-gray-500 dark:text-zinc-400">
-              Total Fleet Net Performance ({activePreset === 'all' ? 'All Records' : `${fromDate || 'Start'} to ${toDate || 'Current'}`})
+              {searchQuery.trim() ? `Filtered Net Performance (${filteredVehicles.length} ${filteredVehicles.length === 1 ? 'Vehicle' : 'Vehicles'})` : 'Total Fleet Net Performance'} ({activePreset === 'all' ? 'All Records' : `${fromDate || 'Start'} to ${toDate || 'Current'}`})
             </span>
             <div className="flex items-baseline gap-3">
               <span className={`text-3xl font-black font-mono tracking-tight ${fleetPnl.netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>

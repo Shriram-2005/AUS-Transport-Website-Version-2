@@ -41,6 +41,7 @@ export interface BillData {
   rupeesInWordsMode: 'auto' | 'manual';
   rupeesInWordsText: string;
   status: 'paid' | 'unpaid';
+  paymentReceivedDate?: string;
   locked?: boolean;
   createdAt?: string;
   updatedAt?: string;
