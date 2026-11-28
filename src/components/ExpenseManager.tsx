@@ -1043,7 +1043,7 @@ export function ExpenseManager() {
                 setDraggedCardId(null);
                 setDragOverCardId(null);
               }}
-              className={`bg-white dark:bg-zinc-900 border rounded-2xl p-5 shadow-xs transition-all flex flex-col justify-between relative group ${
+              className={`bg-white dark:bg-zinc-900 border rounded-2xl p-3.5 sm:p-5 shadow-xs transition-all flex flex-col justify-between relative group min-w-0 ${
                 draggedCardId === account.id
                   ? 'opacity-40 border-blue-400 scale-[0.99]'
                   : dragOverCardId === account.id
@@ -1052,25 +1052,25 @@ export function ExpenseManager() {
               }`}
             >
               {/* Top Section: Vehicle / Account Name, Expense Cost, and 3-Dot Menu */}
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
                 {/* 1. Account Name */}
-                <div className="space-y-1">
-                  <span className="text-xs uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
+                <div className="space-y-1 min-w-0">
+                  <span className="text-[clamp(0.65rem,0.9vw,0.75rem)] uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500">
                     {account.isGeneral ? 'General Account' : 'Vehicle Number'}
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <div className="flex items-center gap-1 shrink-0" title="Drag to reorder card">
                       <GripVertical className="w-4 h-4 text-gray-300 group-hover:text-gray-500 dark:text-zinc-600 dark:group-hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0" />
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                      <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 border ${
                         account.isGeneral
                           ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-200 dark:border-purple-900 text-purple-600 dark:text-purple-400'
                           : 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400'
                       }`}>
-                        {account.isGeneral ? <Building2 className="w-5 h-5" /> : <Truck className="w-5 h-5" />}
+                        {account.isGeneral ? <Building2 className="w-4 h-4 sm:w-5 sm:h-5" /> : <Truck className="w-4 h-4 sm:w-5 sm:h-5" />}
                       </div>
                     </div>
-                    <div>
-                      <h3 className="text-xl font-extrabold font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+                    <div className="min-w-0">
+                      <h3 className="text-[clamp(1rem,1.8vw,1.25rem)] font-extrabold font-mono text-gray-900 dark:text-zinc-100 tracking-tight truncate">
                         {account.id}
                       </h3>
                       <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400">
@@ -1242,8 +1242,8 @@ export function ExpenseManager() {
                   </div>
                 </div>
 
-                <div className="overflow-hidden rounded-xl border border-gray-200/80 dark:border-zinc-800 bg-gray-50/60 dark:bg-zinc-800/30">
-                  <table className="w-full text-xs">
+                <div className="overflow-x-auto rounded-xl border border-gray-200/80 dark:border-zinc-800 bg-gray-50/60 dark:bg-zinc-800/30">
+                  <table className="w-full text-[11px] sm:text-xs">
                     <thead>
                       <tr className="border-b border-gray-200/80 dark:border-zinc-800 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 bg-gray-100/70 dark:bg-zinc-800/60">
                         <th className="py-2.5 px-3 text-left font-semibold">Date</th>

@@ -4176,7 +4176,7 @@ export function InvoiceManager() {
                           {/* Branch Dropdown Menu */}
                           {activeBranchMenuId === bill.billNumber && (
                             <div
-                              className="absolute right-0 top-full mt-1.5 w-72 sm:w-80 rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-3 text-xs box-border"
+                              className="absolute right-0 top-full mt-1.5 w-72 sm:w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl z-50 p-3 text-xs box-border"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 dark:border-zinc-800">

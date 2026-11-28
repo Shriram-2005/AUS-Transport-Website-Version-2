@@ -720,7 +720,7 @@ export function ProfitAndLossManager() {
             return (
               <div
                 key={pnl.vehicleNumber}
-                className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs hover:border-gray-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between relative group"
+                className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-3.5 sm:p-5 shadow-xs hover:border-gray-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between relative group min-w-0"
               >
                 {/* Top Section: Vehicle Number, Net Profit/Loss, and 3-Dot Menu */}
                 <div className="flex items-center justify-between">
@@ -738,7 +738,7 @@ export function ProfitAndLossManager() {
                         <Truck className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="text-xl font-extrabold font-mono text-gray-900 dark:text-zinc-100 tracking-tight">
+                        <h3 className="text-[clamp(1rem,1.8vw,1.25rem)] font-extrabold font-mono text-gray-900 dark:text-zinc-100 tracking-tight truncate">
                           {pnl.vehicleNumber}
                         </h3>
                         <p className="text-xs font-semibold text-gray-500 dark:text-zinc-400">
@@ -857,7 +857,7 @@ export function ProfitAndLossManager() {
                     )}
                   </div>
 
-                  <div className="overflow-hidden rounded-xl border border-gray-200/80 dark:border-zinc-800 bg-gray-50/60 dark:bg-zinc-800/30">
+                  <div className="overflow-x-auto rounded-xl border border-gray-200/80 dark:border-zinc-800 bg-gray-50/60 dark:bg-zinc-800/30">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-gray-200/80 dark:border-zinc-800 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 bg-gray-100/70 dark:bg-zinc-800/60">

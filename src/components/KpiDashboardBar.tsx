@@ -302,7 +302,7 @@ export function KpiDashboardBar({ category, availableCards, defaultKeys }: KpiDa
               </button>
 
               {isAddDropdownOpen && (
-                <div className="absolute right-0 top-full mt-1.5 w-64 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-40 p-1.5 space-y-1 animate-in fade-in-50 zoom-in-95 duration-100">
+                <div className="absolute right-0 top-full mt-1.5 w-64 max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-40 p-1.5 space-y-1 animate-in fade-in-50 zoom-in-95 duration-100">
                   <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-zinc-500 border-b border-gray-100 dark:border-zinc-800">
                     Available Database Metrics
                   </div>
@@ -369,8 +369,8 @@ export function KpiDashboardBar({ category, availableCards, defaultKeys }: KpiDa
         </div>
       </div>
 
-      {/* Cards Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3.5">
+      {/* Cards Grid - dynamically adapts columns to viewport width */}
+      <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-[repeat(auto-fit,minmax(clamp(165px,16vw,240px),1fr))] gap-2.5 sm:gap-3.5">
         {activeCards.map((card, index) => {
           const theme = COLOR_MAP[card.color] || COLOR_MAP.blue;
           const isFirst = index === 0;
@@ -386,7 +386,7 @@ export function KpiDashboardBar({ category, availableCards, defaultKeys }: KpiDa
               onDragLeave={() => {
                 if (dragOverKey === card.key) setDragOverKey(null);
               }}
-              className={`p-4 rounded-2xl bg-white dark:bg-zinc-900 border shadow-2xs space-y-2 transition-all relative group flex flex-col justify-between ${
+              className={`p-3 sm:p-4 rounded-2xl bg-white dark:bg-zinc-900 border shadow-2xs space-y-1.5 sm:space-y-2 transition-all relative group flex flex-col justify-between min-w-0 ${
                 draggedKey === card.key
                   ? 'opacity-30 border-blue-400 scale-95'
                   : dragOverKey === card.key
@@ -400,7 +400,7 @@ export function KpiDashboardBar({ category, availableCards, defaultKeys }: KpiDa
                   {isReorderMode && (
                     <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-grab active:cursor-grabbing shrink-0" />
                   )}
-                  <span className="text-[11px] uppercase font-bold tracking-wider truncate">
+                  <span className="text-[clamp(0.625rem,0.9vw,0.72rem)] uppercase font-bold tracking-wider truncate">
                     {card.title}
                   </span>
                 </div>
@@ -412,26 +412,26 @@ export function KpiDashboardBar({ category, availableCards, defaultKeys }: KpiDa
                       type="button"
                       onClick={() => handleRemoveCard(card.key)}
                       title="Hide this metric"
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-opacity cursor-pointer"
+                      className="opacity-70 sm:opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-opacity cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
                   )}
 
                   <div
-                    className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 ${theme.badge} ${theme.text} ${theme.darkBadge} ${theme.darkText}`}
+                    className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg border flex items-center justify-center shrink-0 ${theme.badge} ${theme.text} ${theme.darkBadge} ${theme.darkText}`}
                   >
-                    {renderKpiIcon(card.icon, 'w-4 h-4')}
+                    {renderKpiIcon(card.icon, 'w-3.5 h-3.5 sm:w-4 sm:h-4')}
                   </div>
                 </div>
               </div>
 
               {/* Bottom: Big Value & Subtitle */}
-              <div>
-                <h3 className="text-xl font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight truncate">
+              <div className="min-w-0">
+                <h3 className="text-[clamp(1rem,1.7vw,1.3rem)] font-black font-mono text-gray-900 dark:text-zinc-100 tracking-tight truncate">
                   {card.value}
                 </h3>
-                <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5 truncate">
+                <p className="text-[clamp(0.65rem,0.9vw,0.75rem)] text-gray-500 dark:text-zinc-400 font-semibold mt-0.5 truncate">
                   {card.subtitle}
                 </p>
               </div>
