@@ -50,6 +50,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { CustomDatePicker } from './CustomDatePicker';
+import { EditableSelectDropdown } from './EditableSelectDropdown';
 import { KpiDashboardBar } from './KpiDashboardBar';
 import { KpiCardDefinition } from '@/lib/kpiManager';
 import { getStoredVehicles, saveStoredVehicles, updateVehicleKmFromBill, VEHICLES_CHANGE_EVENT, Vehicle } from '@/lib/vehicles';
@@ -62,6 +63,10 @@ import {
   getStoredBranches,
   saveStoredBranches,
   BRANCHES_CHANGE_EVENT,
+  getStoredParticulars,
+  addStoredParticular,
+  editStoredParticular,
+  deleteStoredParticular,
   getBillTdsRate,
   calculateBillReceivable,
   calculateBillGrossTotal,
@@ -460,6 +465,9 @@ export function InvoiceManager() {
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [activeBranchMenuId, setActiveBranchMenuId] = useState<string | number | null>(null);
   const [newBranchInput, setNewBranchInput] = useState('');
+  const [editingBranch, setEditingBranch] = useState<string | null>(null);
+  const [editingBranchValue, setEditingBranchValue] = useState('');
+  const [particularsList, setParticularsList] = useState<string[]>(['CHICKS', 'EGGS', 'EGG SHELLS']);
   const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null);
 
   // Manual TDS edit modal state
@@ -926,6 +934,7 @@ export function InvoiceManager() {
   // Initialize and listen to branch/place changes
   useEffect(() => {
     setAvailableBranches(getStoredBranches());
+    setParticularsList(getStoredParticulars());
     const handleBranchesUpdate = (e: any) => {
       setAvailableBranches(e.detail || getStoredBranches());
     };
@@ -1536,6 +1545,23 @@ export function InvoiceManager() {
     if (branchFilter === branchToDelete) {
       setBranchFilter('');
     }
+  };
+
+  const handleEditBranch = (oldBranch: string, newBranch: string) => {
+    const cleanNew = newBranch.trim();
+    if (!cleanNew) {
+      setEditingBranch(null);
+      return;
+    }
+    const nextBranches = availableBranches.map((b) =>
+      b.toLowerCase() === oldBranch.toLowerCase() ? cleanNew : b
+    );
+    setAvailableBranches(nextBranches);
+    saveStoredBranches(nextBranches);
+    if (branchFilter.toLowerCase() === oldBranch.toLowerCase()) {
+      setBranchFilter(cleanNew);
+    }
+    setEditingBranch(null);
   };
 
   const handleSaveTds = async () => {
@@ -3395,9 +3421,9 @@ export function InvoiceManager() {
               </div>
             </div>
 
-            {/* Bottom Row: Multi-Filter Dropdowns (Clean horizontal scroll on mobile, flex-wrap on desktop) */}
+            {/* Bottom Row: Multi-Filter Dropdowns (Wrap cleanly on mobile, tablet portrait & desktop so dropdowns are never clipped) */}
             <div className="pt-2 border-t border-gray-100 dark:border-white/5">
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none no-scrollbar md:flex-wrap md:overflow-visible">
+              <div className="flex flex-wrap items-center gap-2 overflow-visible">
                 <span className="text-[11px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1 shrink-0 mr-0.5">
                   <Filter className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                   <span>Filters</span>
@@ -3562,6 +3588,44 @@ export function InvoiceManager() {
 
                         {availableBranches.map((branch) => {
                           const isSelected = branchFilter.toLowerCase() === branch.toLowerCase();
+                          if (editingBranch === branch) {
+                            return (
+                              <div
+                                key={branch}
+                                className="flex items-center gap-1 px-1.5 py-1 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800"
+                              >
+                                <input
+                                  type="text"
+                                  value={editingBranchValue}
+                                  onChange={(e) => setEditingBranchValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleEditBranch(branch, editingBranchValue);
+                                    } else if (e.key === 'Escape') {
+                                      setEditingBranch(null);
+                                    }
+                                  }}
+                                  autoFocus
+                                  className="flex-1 min-w-0 px-2 py-1 text-xs rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditBranch(branch, editingBranchValue)}
+                                  className="p-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shrink-0"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingBranch(null)}
+                                  className="p-1 rounded-lg text-gray-500 hover:bg-gray-200 dark:hover:bg-zinc-800 cursor-pointer shrink-0"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            );
+                          }
                           return (
                             <div
                               key={branch}
@@ -3580,8 +3644,20 @@ export function InvoiceManager() {
                                 <MapPin className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
                                 <span className="truncate">{branch}</span>
                               </div>
-                              <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                              <div className="flex items-center gap-1 shrink-0 ml-2">
                                 {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingBranch(branch);
+                                    setEditingBranchValue(branch);
+                                  }}
+                                  title={`Edit "${branch}"`}
+                                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all cursor-pointer"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -3589,7 +3665,7 @@ export function InvoiceManager() {
                                     handleDeleteBranch(branch);
                                   }}
                                   title={`Delete "${branch}"`}
-                                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
+                                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -4107,6 +4183,44 @@ export function InvoiceManager() {
                               <div className="max-h-48 overflow-y-auto space-y-1 pr-0.5">
                                 {availableBranches.map((branch) => {
                                   const isSelected = (bill.branch || '').toLowerCase() === branch.toLowerCase();
+                                  if (editingBranch === branch) {
+                                    return (
+                                      <div
+                                        key={branch}
+                                        className="flex items-center gap-1 px-1.5 py-1 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800"
+                                      >
+                                        <input
+                                          type="text"
+                                          value={editingBranchValue}
+                                          onChange={(e) => setEditingBranchValue(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              handleEditBranch(branch, editingBranchValue);
+                                            } else if (e.key === 'Escape') {
+                                              setEditingBranch(null);
+                                            }
+                                          }}
+                                          autoFocus
+                                          className="flex-1 min-w-0 px-2 py-1 text-xs rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 focus:outline-none"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleEditBranch(branch, editingBranchValue)}
+                                          className="p-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shrink-0"
+                                        >
+                                          <Check className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingBranch(null)}
+                                          className="p-1 rounded-lg text-gray-500 hover:bg-gray-200 dark:hover:bg-zinc-800 cursor-pointer shrink-0"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    );
+                                  }
                                   return (
                                     <div
                                       key={branch}
@@ -4121,8 +4235,20 @@ export function InvoiceManager() {
                                         <MapPin className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`} />
                                         <span className="truncate">{branch}</span>
                                       </div>
-                                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                      <div className="flex items-center gap-1 shrink-0 ml-2">
                                         {isSelected && <Check className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingBranch(branch);
+                                            setEditingBranchValue(branch);
+                                          }}
+                                          title={`Edit "${branch}"`}
+                                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all cursor-pointer"
+                                        >
+                                          <Pencil className="w-3.5 h-3.5" />
+                                        </button>
                                         <button
                                           type="button"
                                           onClick={(e) => {
@@ -4130,7 +4256,7 @@ export function InvoiceManager() {
                                             handleDeleteBranch(branch);
                                           }}
                                           title={`Delete "${branch}"`}
-                                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
+                                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
                                         >
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
@@ -5007,43 +5133,38 @@ export function InvoiceManager() {
 
                   {/* Particulars & Quantity in 2-Column Responsive Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Particulars - Only Dropdown (No button clicks) */}
+                    {/* Particulars - Editable Dropdown matching Invoice Page Style */}
                     <div className="form-group mb-0">
                       <label className="text-xs font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 block">
                         Particulars
                       </label>
-                      <div className="relative">
-                        <select
-                          value={
-                            ['CHICKS', 'EGGS', 'EGG SHELLS'].includes(activeTrip.itemName || '')
-                              ? activeTrip.itemName
-                              : activeTrip.itemName
-                              ? 'OTHER'
-                              : ''
-                          }
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val === 'OTHER') {
-                              selectParticular('OTHER');
-                            } else {
-                              selectParticular(val);
-                            }
-                          }}
-                          className="w-full appearance-none px-3.5 py-2.5 pr-10 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 text-sm font-semibold shadow-xs hover:border-gray-400 dark:hover:border-zinc-600 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all cursor-pointer"
-                        >
-                          <option value="">Select Particulars</option>
-                          <option value="CHICKS">CHICKS</option>
-                          <option value="EGGS">EGGS</option>
-                          <option value="EGG SHELLS">EGG SHELLS</option>
-                          <option value="OTHER">OTHER (Custom)</option>
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 dark:text-zinc-500">
-                          <ChevronDown className="w-4 h-4 stroke-[2.25]" />
-                        </div>
-                      </div>
+                      <EditableSelectDropdown
+                        value={
+                          particularsList.some((p) => p.toLowerCase() === (activeTrip.itemName || '').toLowerCase())
+                            ? activeTrip.itemName
+                            : ''
+                        }
+                        options={particularsList}
+                        onChange={(val) => selectParticular(val)}
+                        title="Select Particulars"
+                        placeholder="Select Particulars"
+                        addPlaceholder="New particular name..."
+                        allowClear={true}
+                        onAddOption={(item) => setParticularsList(addStoredParticular(item.toUpperCase()))}
+                        onEditOption={(oldItem, newItem) => setParticularsList(editStoredParticular(oldItem, newItem.toUpperCase()))}
+                        onDeleteOption={(item) => setParticularsList(deleteStoredParticular(item))}
+                        extraOption={{
+                          label: 'OTHER (Custom)',
+                          isSelected:
+                            Boolean(activeTrip.itemName) &&
+                            !particularsList.some((p) => p.toLowerCase() === (activeTrip.itemName || '').toLowerCase()),
+                          onSelect: () => selectParticular('OTHER'),
+                        }}
+                      />
 
                       {/* When OTHER is selected: show manual text entry */}
-                      {(!['CHICKS', 'EGGS', 'EGG SHELLS', ''].includes(activeTrip.itemName || '') ||
+                      {((Boolean(activeTrip.itemName) &&
+                        !particularsList.some((p) => p.toLowerCase() === (activeTrip.itemName || '').toLowerCase())) ||
                         activeTrip.itemName === 'OTHER') && (
                         <div className="mt-2 animate-in fade-in duration-150">
                           <label className="text-[11px] font-semibold text-gray-600 dark:text-zinc-400 mb-1 block">

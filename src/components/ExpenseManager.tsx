@@ -39,6 +39,12 @@ import {
   deleteStoredExpense,
   getStoredExpenseCategories,
   addStoredExpenseCategory,
+  editStoredExpenseCategory,
+  deleteStoredExpenseCategory,
+  getStoredPaymentModes,
+  addStoredPaymentMode,
+  editStoredPaymentMode,
+  deleteStoredPaymentMode,
   filterExpenses,
   calculateExpenseSummary,
   numberToWords,
@@ -48,6 +54,7 @@ import {
 } from '@/lib/expenses';
 import { Vehicle, getStoredVehicles, VEHICLES_CHANGE_EVENT } from '@/lib/vehicles';
 import { CustomDatePicker } from './CustomDatePicker';
+import { EditableSelectDropdown } from './EditableSelectDropdown';
 import { REFRESH_MODULE_EVENT } from '@/lib/headerEvents';
 import {
   applyCardOrder,
@@ -115,7 +122,8 @@ export function ExpenseManager() {
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState('');
   const [formDescription, setFormDescription] = useState('');
-  const [formPaymentMode, setFormPaymentMode] = useState<ExpenseEntry['paymentMode']>('Cash');
+  const [formPaymentMode, setFormPaymentMode] = useState<string>('Cash');
+  const [paymentModesList, setPaymentModesList] = useState<string[]>([...PAYMENT_MODES]);
   const [formPaidTo, setFormPaidTo] = useState('');
   const [formAmount, setFormAmount] = useState<string>(''); // No pre-filled price by default
   const [formError, setFormError] = useState('');
@@ -131,6 +139,7 @@ export function ExpenseManager() {
     setVehicles(getStoredVehicles());
     setExpenses(getStoredExpenses());
     setCategoriesList(getStoredExpenseCategories());
+    setPaymentModesList(getStoredPaymentModes());
 
     const handleVehiclesUpdate = (e: CustomEvent<Vehicle[]>) => {
       if (e.detail) {
@@ -1349,22 +1358,20 @@ export function ExpenseManager() {
                 <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 mb-1.5 block">
                   Assign to Vehicle or General Account *
                 </label>
-                <div className="relative">
-                  <select
-                    value={formVehicleNumber}
-                    onChange={(e) => setFormVehicleNumber(e.target.value)}
-                    required
-                    className="w-full appearance-none px-3.5 py-2.5 pr-10 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 font-mono text-sm font-bold focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
-                  >
-                    <option value="GENERAL">Office & General Fleet Overheads (No Vehicle)</option>
-                    {vehicles.map((v) => (
-                      <option key={v.id} value={v.registrationNumber}>
-                        Vehicle: {v.registrationNumber}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+                <EditableSelectDropdown
+                  value={formVehicleNumber === 'GENERAL' ? 'Office & General Fleet Overheads (GENERAL)' : formVehicleNumber}
+                  options={['Office & General Fleet Overheads (GENERAL)', ...vehicles.map((v) => v.registrationNumber)]}
+                  onChange={(val) => {
+                    if (val.startsWith('Office & General')) {
+                      setFormVehicleNumber('GENERAL');
+                    } else {
+                      setFormVehicleNumber(val);
+                    }
+                  }}
+                  title="Select Account or Vehicle"
+                  placeholder="Select Vehicle or General..."
+                  icon={<Truck className="w-4 h-4" />}
+                />
               </div>
 
               {/* 2-Column: Date & Voucher Number */}
@@ -1394,84 +1401,22 @@ export function ExpenseManager() {
                 </div>
               </div>
 
-              {/* Expense Category with Option to Add Custom */}
+              {/* Expense Category Selector matching Invoice Page Dropdown */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-sm font-bold text-gray-800 dark:text-zinc-200">
-                    Expense Category *
-                  </label>
-                  {!isAddingNewCategory ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAddingNewCategory(true);
-                        setNewCategoryInput('');
-                      }}
-                      className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Custom Category</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingNewCategory(false)}
-                      className="text-xs font-semibold text-gray-500 hover:text-gray-700 dark:text-zinc-400 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-
-                {!isAddingNewCategory ? (
-                  <div className="relative">
-                    <select
-                      value={formCategory}
-                      onChange={(e) => {
-                        if (e.target.value === '__add_new__') {
-                          setIsAddingNewCategory(true);
-                          setNewCategoryInput('');
-                        } else {
-                          setFormCategory(e.target.value);
-                        }
-                      }}
-                      className="w-full appearance-none px-3.5 py-2.5 pr-10 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
-                    >
-                      {categoriesList.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                      <option value="__add_new__">+ Add New Expense Category...</option>
-                    </select>
-                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="Enter new expense category name..."
-                      value={newCategoryInput}
-                      onChange={(e) => setNewCategoryInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleSaveNewCategory();
-                        }
-                      }}
-                      autoFocus
-                      className="flex-1 px-3.5 py-2 rounded-xl border border-blue-400 dark:border-blue-500 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:ring-4 focus:ring-blue-500/10"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveNewCategory}
-                      disabled={!newCategoryInput.trim()}
-                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-                    >
-                      Save Category
-                    </button>
-                  </div>
-                )}
+                <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 mb-1.5 block">
+                  Expense Category *
+                </label>
+                <EditableSelectDropdown
+                  value={formCategory}
+                  options={categoriesList}
+                  onChange={(val) => setFormCategory(val)}
+                  title="Select Expense Category"
+                  placeholder="Select Expense Category..."
+                  addPlaceholder="New category name..."
+                  onAddOption={(newCat) => setCategoriesList(addStoredExpenseCategory(newCat))}
+                  onEditOption={(oldCat, newCat) => setCategoriesList(editStoredExpenseCategory(oldCat, newCat))}
+                  onDeleteOption={(cat) => setCategoriesList(deleteStoredExpenseCategory(cat))}
+                />
               </div>
 
               {/* 2-Column: Payment Mode & Paid To */}
@@ -1480,18 +1425,17 @@ export function ExpenseManager() {
                   <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 mb-1.5 block">
                     Payment Mode
                   </label>
-                  <div className="relative">
-                    <select
-                      value={formPaymentMode}
-                      onChange={(e) => setFormPaymentMode(e.target.value as ExpenseEntry['paymentMode'])}
-                      className="w-full appearance-none px-3.5 py-2.5 pr-8 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
-                    >
-                      {PAYMENT_MODES.map((pm) => (
-                        <option key={pm} value={pm}>{pm}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
+                  <EditableSelectDropdown
+                    value={formPaymentMode}
+                    options={paymentModesList}
+                    onChange={(val) => setFormPaymentMode(val || 'Cash')}
+                    title="Select Payment Mode"
+                    placeholder="Select Payment Mode..."
+                    addPlaceholder="New payment mode..."
+                    onAddOption={(newMode) => setPaymentModesList(addStoredPaymentMode(newMode))}
+                    onEditOption={(oldMode, newMode) => setPaymentModesList(editStoredPaymentMode(oldMode, newMode))}
+                    onDeleteOption={(mode) => setPaymentModesList(deleteStoredPaymentMode(mode))}
+                  />
                 </div>
 
                 <div>

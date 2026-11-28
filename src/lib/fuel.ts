@@ -8,7 +8,7 @@ export interface FuelEntry {
   vehicleNumber: string; // Registration number in uppercase
   date: string;          // DD-MM-YYYY
   billNumber: string;    // Bunk bill number
-  particulars: 'Diesel' | 'Petrol';
+  particulars: string;
   liters: number;
   ratePerLiter: number;
   totalAmount: number;
@@ -84,7 +84,7 @@ function normalizeFuelEntry(f: any): FuelEntry {
     vehicleNumber: (f.vehicleNumber || f.vehicle_number || '').trim().toUpperCase(),
     date: (f.date || f.entry_date || '').trim(),
     billNumber: (f.billNumber || f.bill_number || '').trim(),
-    particulars: (f.particulars || f.fuel_type || 'Diesel') === 'Petrol' ? 'Petrol' : 'Diesel',
+    particulars: (f.particulars || f.fuel_type || 'Diesel').trim() || 'Diesel',
     liters: Math.round(liters * 100) / 100,
     ratePerLiter: Math.round(rate * 100) / 100,
     totalAmount: Math.round(total * 100) / 100,
@@ -164,12 +164,12 @@ export function getStoredBunkNames(): string[] {
   if (typeof window === 'undefined') return DEFAULT_BUNK_NAMES;
   try {
     const raw = localStorage.getItem(BUNKS_STORAGE_KEY);
-    if (!raw) {
+    if (raw === null) {
       saveStoredBunkNames(DEFAULT_BUNK_NAMES);
       return DEFAULT_BUNK_NAMES;
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return Array.from(new Set(parsed.map((s) => String(s).trim()).filter(Boolean)));
     }
     return DEFAULT_BUNK_NAMES;
@@ -200,6 +200,79 @@ export function addStoredBunkName(name: string): string[] {
     return updated;
   }
   return current;
+}
+
+export function editStoredBunkName(oldName: string, newName: string): string[] {
+  const cleanNew = newName.trim();
+  if (!cleanNew) return getStoredBunkNames();
+  const current = getStoredBunkNames();
+  const updated = current.map((b) => (b.toLowerCase() === oldName.toLowerCase() ? cleanNew : b));
+  saveStoredBunkNames(updated);
+  return updated;
+}
+
+export function deleteStoredBunkName(name: string): string[] {
+  const current = getStoredBunkNames();
+  const updated = current.filter((b) => b.toLowerCase() !== name.toLowerCase());
+  saveStoredBunkNames(updated);
+  return updated;
+}
+
+const FUEL_PARTICULARS_STORAGE_KEY = 'aus_transport_fuel_particulars_v1';
+export const DEFAULT_FUEL_PARTICULARS = ['Diesel', 'Petrol'];
+
+export function getStoredFuelParticulars(): string[] {
+  if (typeof window === 'undefined') return [...DEFAULT_FUEL_PARTICULARS];
+  try {
+    const raw = localStorage.getItem(FUEL_PARTICULARS_STORAGE_KEY);
+    if (raw === null) {
+      saveStoredFuelParticulars([...DEFAULT_FUEL_PARTICULARS]);
+      return [...DEFAULT_FUEL_PARTICULARS];
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return Array.from(new Set(parsed.map((s) => String(s).trim()).filter(Boolean)));
+    }
+    return [...DEFAULT_FUEL_PARTICULARS];
+  } catch {
+    return [...DEFAULT_FUEL_PARTICULARS];
+  }
+}
+
+export function saveStoredFuelParticulars(items: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const clean = Array.from(new Set(items.map((s) => String(s).trim()).filter(Boolean)));
+    localStorage.setItem(FUEL_PARTICULARS_STORAGE_KEY, JSON.stringify(clean));
+  } catch {}
+}
+
+export function addStoredFuelParticular(item: string): string[] {
+  const trimmed = item.trim();
+  if (!trimmed) return getStoredFuelParticulars();
+  const current = getStoredFuelParticulars();
+  if (!current.some((i) => i.toLowerCase() === trimmed.toLowerCase())) {
+    const updated = [...current, trimmed];
+    saveStoredFuelParticulars(updated);
+    return updated;
+  }
+  return current;
+}
+
+export function editStoredFuelParticular(oldItem: string, newItem: string): string[] {
+  const cleanNew = newItem.trim();
+  if (!cleanNew) return getStoredFuelParticulars();
+  const current = getStoredFuelParticulars();
+  const updated = current.map((i) => (i.toLowerCase() === oldItem.toLowerCase() ? cleanNew : i));
+  saveStoredFuelParticulars(updated);
+  return updated;
+}
+
+export function deleteStoredFuelParticular(item: string): string[] {
+  const current = getStoredFuelParticulars();
+  const updated = current.filter((i) => i.toLowerCase() !== item.toLowerCase());
+  saveStoredFuelParticulars(updated);
+  return updated;
 }
 
 /**

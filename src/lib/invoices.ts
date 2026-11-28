@@ -70,15 +70,72 @@ export function getStoredBranches(): string[] {
   if (typeof window === 'undefined') return [...DEFAULT_BRANCHES];
   try {
     const raw = localStorage.getItem(BRANCHES_STORAGE_KEY);
-    if (!raw) return [...DEFAULT_BRANCHES];
+    if (raw === null) return [...DEFAULT_BRANCHES];
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return parsed.filter((p) => typeof p === 'string' && p.trim() !== '');
     }
   } catch (err) {
     console.error('Error reading branches from localStorage:', err);
   }
   return [...DEFAULT_BRANCHES];
+}
+
+const PARTICULARS_STORAGE_KEY = 'aus_transport_invoice_particulars_v1';
+export const DEFAULT_PARTICULARS: string[] = ['CHICKS', 'EGGS', 'EGG SHELLS'];
+
+export function getStoredParticulars(): string[] {
+  if (typeof window === 'undefined') return [...DEFAULT_PARTICULARS];
+  try {
+    const raw = localStorage.getItem(PARTICULARS_STORAGE_KEY);
+    if (raw === null) {
+      saveStoredParticulars([...DEFAULT_PARTICULARS]);
+      return [...DEFAULT_PARTICULARS];
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return Array.from(new Set(parsed.map((s) => String(s).trim()).filter(Boolean)));
+    }
+    return [...DEFAULT_PARTICULARS];
+  } catch {
+    return [...DEFAULT_PARTICULARS];
+  }
+}
+
+export function saveStoredParticulars(items: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const clean = Array.from(new Set(items.map((s) => String(s).trim()).filter(Boolean)));
+    localStorage.setItem(PARTICULARS_STORAGE_KEY, JSON.stringify(clean));
+  } catch {}
+}
+
+export function addStoredParticular(item: string): string[] {
+  const trimmed = item.trim();
+  if (!trimmed) return getStoredParticulars();
+  const current = getStoredParticulars();
+  if (!current.some((i) => i.toLowerCase() === trimmed.toLowerCase())) {
+    const updated = [...current, trimmed];
+    saveStoredParticulars(updated);
+    return updated;
+  }
+  return current;
+}
+
+export function editStoredParticular(oldItem: string, newItem: string): string[] {
+  const cleanNew = newItem.trim();
+  if (!cleanNew) return getStoredParticulars();
+  const current = getStoredParticulars();
+  const updated = current.map((i) => (i.toLowerCase() === oldItem.toLowerCase() ? cleanNew : i));
+  saveStoredParticulars(updated);
+  return updated;
+}
+
+export function deleteStoredParticular(item: string): string[] {
+  const current = getStoredParticulars();
+  const updated = current.filter((i) => i.toLowerCase() !== item.toLowerCase());
+  saveStoredParticulars(updated);
+  return updated;
 }
 
 /**
@@ -128,14 +185,42 @@ export function calculateBillGrossTotal(bill: BillData): number {
 }
 
 /**
+ * Calculates gross total of an invoice bill EXCLUDING toll gate reimbursements.
+ * Used for Profit & Loss revenue so reimbursed toll amounts are not counted as freight income.
+ */
+export function calculateBillGrossWithoutToll(bill: BillData): number {
+  let total = 0;
+  const visible = bill.visibleTrips ?? bill.trips?.length ?? 0;
+  for (const trip of (bill.trips || []).slice(0, visible)) {
+    if (trip.enabled !== false) {
+      const runningKm = Math.max(0, (Number(trip.closingKm) || 0) - (Number(trip.startingKm) || 0));
+      total += runningKm * (Number(trip.rate) || 0);
+    }
+  }
+  if (bill.keralaRtoEnabled && (Number(bill.keralaRtoMultiplier) || 0) > 0) {
+    total += (Number(bill.keralaRtoMultiplier) || 0) * (Number(bill.keralaRtoAmount) || 0);
+  }
+  return Math.round(total);
+}
+
+/**
  * Calculates Total Receivable Amount = (Total Gross Amount - TDS %)
  * Standard TDS rate is 1% unless overridden for that specific bill.
- * This receivable amount is used as the true revenue figure across all reports and dashboards.
  */
 export function calculateBillReceivable(bill: BillData): number {
   const gross = calculateBillGrossTotal(bill);
   const tdsRate = getBillTdsRate(bill);
   const receivable = gross * (1 - tdsRate / 100);
+  return Math.round(receivable);
+}
+
+/**
+ * Calculates Profit & Loss freight revenue for a bill (excluding toll reimbursements, after TDS %)
+ */
+export function calculateBillPnlReceivable(bill: BillData): number {
+  const grossWithoutToll = calculateBillGrossWithoutToll(bill);
+  const tdsRate = getBillTdsRate(bill);
+  const receivable = grossWithoutToll * (1 - tdsRate / 100);
   return Math.round(receivable);
 }
 

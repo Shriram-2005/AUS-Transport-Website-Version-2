@@ -657,7 +657,7 @@ export function ProfitAndLossManager() {
           {/* Quick Metrics Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-200 dark:border-zinc-800">
             <div className="p-3 rounded-xl bg-white dark:bg-zinc-800 border border-gray-100 dark:border-zinc-700">
-              <span className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase" title="Total Receivable Amount after TDS deduction">Revenue (Receivable)</span>
+              <span className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase" title="Freight Receivable Amount excluding Toll reimbursements">Revenue (Excl. Toll)</span>
               <p className="text-base font-black font-mono text-gray-900 dark:text-zinc-100">
                 Rs.{fleetPnl.totalRevenue.toLocaleString('en-IN')}
               </p>
@@ -681,7 +681,7 @@ export function ProfitAndLossManager() {
               </p>
             </div>
             <div className="p-3 rounded-xl bg-white dark:bg-zinc-800 border border-gray-100 dark:border-zinc-700">
-              <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 uppercase" title="FASTag and Toll expenses are excluded">Expenses (excl. Toll)</span>
+              <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400 uppercase" title="Includes FASTag, Toll, Permits, Insurance & Other Expenses">Expenses</span>
               <p className="text-base font-black font-mono text-gray-900 dark:text-zinc-100">
                 Rs.{fleetPnl.totalExpenses.toLocaleString('en-IN')}
               </p>
@@ -807,7 +807,7 @@ export function ProfitAndLossManager() {
                 {/* Middle Financial Stats Bar */}
                 <div className="mt-4 pt-3 border-t border-gray-100 dark:border-zinc-800 grid grid-cols-5 gap-2 text-center text-xs">
                   <div className="p-2 rounded-lg bg-gray-50/80 dark:bg-zinc-800/40">
-                    <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-zinc-400" title="Total Receivable Amount after TDS deduction">Revenue (Receivable)</span>
+                    <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-zinc-400" title="Freight Receivable Amount excluding Toll reimbursements">Revenue (Excl. Toll)</span>
                     <p className="font-mono font-bold text-gray-900 dark:text-zinc-100 text-xs">Rs.{pnl.revenue.toLocaleString('en-IN')}</p>
                   </div>
                   <div className="p-2 rounded-lg bg-gray-50/80 dark:bg-zinc-800/40">
@@ -823,7 +823,7 @@ export function ProfitAndLossManager() {
                     <p className="font-mono font-bold text-gray-900 dark:text-zinc-100 text-xs">Rs.{pnl.driverSalary.toLocaleString('en-IN')}</p>
                   </div>
                   <div className="p-2 rounded-lg bg-gray-50/80 dark:bg-zinc-800/40">
-                    <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400" title="FASTag and Toll expenses are excluded">Expenses (excl. Toll)</span>
+                    <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400" title="Includes FASTag, Toll & Other Expenses">Expenses</span>
                     <p className="font-mono font-bold text-gray-900 dark:text-zinc-100 text-xs">Rs.{pnl.expensesCost.toLocaleString('en-IN')}</p>
                   </div>
                 </div>
@@ -1056,7 +1056,7 @@ export function ProfitAndLossManager() {
                   <span className="font-mono text-gray-800 dark:text-zinc-200">Rs.{statementPnl.driverSalary.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-600 dark:text-zinc-400">Taxes & Other Expenses (Toll excluded):</span>
+                  <span className="text-gray-600 dark:text-zinc-400">Taxes, Toll &amp; Other Expenses:</span>
                   <span className="font-mono text-gray-800 dark:text-zinc-200">Rs.{statementPnl.expensesCost.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="border-t border-indigo-200 dark:border-indigo-800 pt-2 flex items-center justify-between text-sm">
@@ -1128,7 +1128,7 @@ export function ProfitAndLossManager() {
               </thead>
               <tbody>
                 <tr>
-                  <td className="font-bold">A. Total Operating Revenue (Net Receivable after TDS)</td>
+                  <td className="font-bold">A. Total Operating Revenue (Excl. Toll, Net after TDS)</td>
                   <td className="text-right font-mono font-bold">
                     Rs.{statementPnl.revenue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
@@ -1152,7 +1152,7 @@ export function ProfitAndLossManager() {
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ paddingLeft: '16px' }}>4. Taxes, Permits & Other Expenses (Toll excluded)</td>
+                  <td style={{ paddingLeft: '16px' }}>4. Taxes, Toll, Permits &amp; Other Expenses</td>
                   <td className="text-right font-mono">
                     Rs.{statementPnl.expensesCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>

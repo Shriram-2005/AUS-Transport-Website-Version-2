@@ -40,6 +40,12 @@ import {
   getStoredBunkNames,
   saveStoredBunkNames,
   addStoredBunkName,
+  editStoredBunkName,
+  deleteStoredBunkName,
+  getStoredFuelParticulars,
+  addStoredFuelParticular,
+  editStoredFuelParticular,
+  deleteStoredFuelParticular,
   filterFuelEntries,
   calculateFuelSummary,
   calculateVehicleMileageStats,
@@ -51,6 +57,7 @@ import {
 import { BillData, getStoredInvoices, INVOICES_CHANGE_EVENT } from '@/lib/invoices';
 import { Vehicle, getStoredVehicles, VEHICLES_CHANGE_EVENT } from '@/lib/vehicles';
 import { CustomDatePicker } from './CustomDatePicker';
+import { EditableSelectDropdown } from './EditableSelectDropdown';
 import { KpiDashboardBar } from './KpiDashboardBar';
 import { KpiCardDefinition } from '@/lib/kpiManager';
 import { REFRESH_MODULE_EVENT } from '@/lib/headerEvents';
@@ -122,7 +129,8 @@ export function FuelManager() {
   const [formVehicleNumber, setFormVehicleNumber] = useState('');
   const [formDate, setFormDate] = useState<string>(getTodayDDMMYYYY());
   const [formBillNumber, setFormBillNumber] = useState('');
-  const [formParticulars, setFormParticulars] = useState<'Diesel' | 'Petrol'>('Diesel');
+  const [formParticulars, setFormParticulars] = useState<string>('Diesel');
+  const [particularsList, setParticularsList] = useState<string[]>(['Diesel', 'Petrol']);
   const [formLiters, setFormLiters] = useState<string>('');
   const [formRate, setFormRate] = useState<string>(''); // No pre-existing price by default
   const [formTotal, setFormTotal] = useState<string>('');
@@ -144,6 +152,7 @@ export function FuelManager() {
     setFuelEntries(getStoredFuelEntries());
     setBills(getStoredInvoices());
     setBunkList(getStoredBunkNames());
+    setParticularsList(getStoredFuelParticulars());
 
     const handleVehiclesUpdate = (e: CustomEvent<Vehicle[]>) => {
       if (e.detail) {
@@ -1699,22 +1708,14 @@ export function FuelManager() {
                 <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 mb-1.5 block">
                   Select Vehicle *
                 </label>
-                <div className="relative">
-                  <select
-                    value={formVehicleNumber}
-                    onChange={(e) => setFormVehicleNumber(e.target.value)}
-                    required
-                    className="w-full appearance-none px-3.5 py-2.5 pr-10 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 font-mono text-sm font-bold focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
-                  >
-                    <option value="" disabled>Select vehicle</option>
-                    {vehicles.map((v) => (
-                      <option key={v.id} value={v.registrationNumber}>
-                        {v.registrationNumber}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+                <EditableSelectDropdown
+                  value={formVehicleNumber}
+                  options={vehicles.map((v) => v.registrationNumber)}
+                  onChange={(val) => setFormVehicleNumber(val)}
+                  title="Select Vehicle"
+                  placeholder="Select vehicle..."
+                  icon={<Truck className="w-4 h-4" />}
+                />
               </div>
 
               {/* 2-Column: Date & Bill Number */}
@@ -1750,17 +1751,17 @@ export function FuelManager() {
                   <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 mb-1.5 block">
                     Particulars *
                   </label>
-                  <div className="relative">
-                    <select
-                      value={formParticulars}
-                      onChange={(e) => setFormParticulars(e.target.value as 'Diesel' | 'Petrol')}
-                      className="w-full appearance-none px-3.5 py-2.5 pr-8 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
-                    >
-                      <option value="Diesel">Diesel</option>
-                      <option value="Petrol">Petrol</option>
-                    </select>
-                    <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
+                  <EditableSelectDropdown
+                    value={formParticulars}
+                    options={particularsList}
+                    onChange={(val) => setFormParticulars(val || 'Diesel')}
+                    title="Select Fuel Type"
+                    placeholder="Select fuel type..."
+                    addPlaceholder="New fuel type..."
+                    onAddOption={(item) => setParticularsList(addStoredFuelParticular(item))}
+                    onEditOption={(oldItem, newItem) => setParticularsList(editStoredFuelParticular(oldItem, newItem))}
+                    onDeleteOption={(item) => setParticularsList(deleteStoredFuelParticular(item))}
+                  />
                 </div>
 
                 <div>
@@ -1828,86 +1829,32 @@ export function FuelManager() {
                   />
                 </div>
 
-                {/* Bunk Station Selector with Add New Option */}
+                {/* Bunk Station Selector matching Invoice Page Dropdown */}
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 flex items-center gap-1.5">
-                      <Building2 className="w-4 h-4 text-gray-500" />
-                      <span>Bunk Station</span>
-                    </label>
-                    {!isAddingNewBunk ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsAddingNewBunk(true);
-                          setNewBunkInput('');
-                        }}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add New Bunk</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingNewBunk(false)}
-                        className="text-xs font-semibold text-gray-500 hover:text-gray-700 dark:text-zinc-400 cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-
-                  {!isAddingNewBunk ? (
-                    <div className="relative">
-                      <select
-                        value={formBunkName}
-                        onChange={(e) => {
-                          if (e.target.value === '__add_new__') {
-                            setIsAddingNewBunk(true);
-                            setNewBunkInput('');
-                          } else {
-                            setFormBunkName(e.target.value);
-                          }
-                        }}
-                        className="w-full appearance-none px-3.5 py-2.5 pr-10 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
-                      >
-                        <option value="">Select Bunk Station (Optional)</option>
-                        {bunkList.map((bunk) => (
-                          <option key={bunk} value={bunk}>
-                            {bunk}
-                          </option>
-                        ))}
-                        <option value="__add_new__">+ Add New Bunk Station...</option>
-                      </select>
-                      <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Enter bunk name (e.g. HP Bunk Dharapuram)"
-                        value={newBunkInput}
-                        onChange={(e) => setNewBunkInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleSaveNewBunk();
-                          }
-                        }}
-                        autoFocus
-                        className="flex-1 px-3.5 py-2 rounded-xl border border-blue-400 dark:border-blue-500 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:ring-4 focus:ring-blue-500/10"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleSaveNewBunk}
-                        disabled={!newBunkInput.trim()}
-                        className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-                      >
-                        Save Bunk
-                      </button>
-                    </div>
-                  )}
+                  <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 mb-1.5 flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-gray-500" />
+                    <span>Bunk Station</span>
+                  </label>
+                  <EditableSelectDropdown
+                    value={formBunkName}
+                    options={bunkList}
+                    onChange={(val) => setFormBunkName(val)}
+                    title="Select Bunk Station"
+                    placeholder="Select Bunk Station (Optional)"
+                    addPlaceholder="New bunk name..."
+                    allowClear={true}
+                    align="right"
+                    onAddOption={async (newBunk) => {
+                      const updated = addStoredBunkName(newBunk);
+                      setBunkList(updated);
+                      try {
+                        const supabase = createClient();
+                        await supabase.from('fuel_bunks').upsert({ name: newBunk }, { onConflict: 'name' });
+                      } catch {}
+                    }}
+                    onEditOption={(oldBunk, newBunk) => setBunkList(editStoredBunkName(oldBunk, newBunk))}
+                    onDeleteOption={(bunk) => setBunkList(deleteStoredBunkName(bunk))}
+                  />
                 </div>
               </div>
 

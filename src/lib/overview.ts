@@ -4,7 +4,7 @@
 import { BillData } from './invoices';
 import { FuelEntry } from './fuel';
 import { MaintenanceEntry } from './maintenance';
-import { ExpenseEntry, isTollExpense } from './expenses';
+import { ExpenseEntry } from './expenses';
 import { Driver } from './drivers';
 import { Vehicle } from './vehicles';
 import { calculateBillTotal, calculateBillGrossTotal, parseDateToTimestamp, isDateInRange } from './profitAndLoss';
@@ -135,10 +135,9 @@ export function calculateExecutiveKpis(
     totalMaintenanceJobs += 1;
   }
 
-  // Process Expenses (excluding FASTag & Toll expenses as they are reimbursed by clients)
+  // Process Expenses (including FASTag & Toll, as toll is excluded from invoice P&L revenue)
   let totalExpensesCost = 0;
   for (const exp of expenses) {
-    if (isTollExpense(exp)) continue;
     if (!isDateInRange(exp.date, fromDate, toDate)) continue;
     totalExpensesCost += Number(exp.amount) || 0;
   }
@@ -237,7 +236,6 @@ export function calculateVehicleRankings(
 
     let eCost = 0;
     for (const e of expenses) {
-      if (isTollExpense(e)) continue;
       if ((e.vehicleNumber || '').trim().toUpperCase() !== cleanReg) continue;
       if (!isDateInRange(e.date, fromDate, toDate)) continue;
       eCost += Number(e.amount) || 0;

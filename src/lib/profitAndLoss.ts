@@ -1,11 +1,11 @@
 // Profit & Loss calculation engine across Freight Invoices, Fuel, Repairs, Driver Pay, and Expenses
 // Independent calculation with custom period filtering and monthly breakdowns
 
-import { BillData, parseMonthFromDate, calculateBillReceivable, calculateBillGrossTotal, getBillTdsRate } from './invoices';
-export { calculateBillReceivable, calculateBillGrossTotal, getBillTdsRate };
+import { BillData, parseMonthFromDate, calculateBillReceivable, calculateBillPnlReceivable, calculateBillGrossTotal, getBillTdsRate } from './invoices';
+export { calculateBillReceivable, calculateBillPnlReceivable, calculateBillGrossTotal, getBillTdsRate };
 import { FuelEntry } from './fuel';
 import { MaintenanceEntry } from './maintenance';
-import { ExpenseEntry, isTollExpense } from './expenses';
+import { ExpenseEntry } from './expenses';
 import { Driver } from './drivers';
 
 export interface MonthPnlRecord {
@@ -52,18 +52,18 @@ export interface FleetPnlSummary {
 
 /**
  * Calculates freight revenue for a bill for Profit & Loss and Overview analytics.
- * The Total Receivable Amount (Total Gross - TDS %, default 1%) is used as the true revenue
- * figure across all transport analytics, reflecting actual payments received from the company.
+ * Excludes toll gate amounts from the invoice (since toll is paid out-of-pocket and logged in Expenses)
+ * and deducts the TDS % (default 1%).
  */
 export function calculateBillRevenue(bill: BillData): number {
-  return calculateBillReceivable(bill);
+  return calculateBillPnlReceivable(bill);
 }
 
 /**
- * Calculates final invoice revenue amount for a bill in P&L
+ * Calculates final invoice revenue amount for a bill in P&L (excluding toll reimbursements)
  */
 export function calculateBillTotal(bill: BillData): number {
-  return calculateBillReceivable(bill);
+  return calculateBillPnlReceivable(bill);
 }
 
 /**
@@ -248,10 +248,9 @@ export function calculateVehiclePnl(
     m.maintenanceCost += cost;
   }
 
-  // 4. Process Expenses Entries (exclude FASTag & Toll expenses as they are reimbursed by clients)
+  // 4. Process Expenses Entries (including FASTag & Toll expenses, since toll is excluded from invoice revenue)
   let totalExpenses = 0;
   for (const exp of expenses) {
-    if (isTollExpense(exp)) continue;
     const eVehKey = normalizeVehicleKey(exp.vehicleNumber);
     if (cleanVehicleKey && eVehKey !== cleanVehicleKey) continue;
     if (!isDateInRange(exp.date, fromDate, toDate)) continue;
@@ -348,11 +347,10 @@ export function calculateFleetPnl(
     totalExpenses += vPnl.expensesCost;
   }
 
-  // Add any non-vehicle GENERAL expenses (excluding FASTag & Toll expenses)
+  // Add any non-vehicle GENERAL expenses (including Toll / FASTag expenses)
   if (includeGeneralExpenses) {
     let generalExpensesRaw = 0;
     for (const exp of expenses) {
-      if (isTollExpense(exp)) continue;
       const eVeh = (exp.vehicleNumber || 'GENERAL').trim().toUpperCase();
       if (eVeh === 'GENERAL' || eVeh === 'OFFICE') {
         if (isDateInRange(exp.date, fromDate, toDate)) {

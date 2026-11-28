@@ -9,7 +9,7 @@ export interface ExpenseEntry {
   category: string;         // Expense category
   description: string;      // Manual description / remarks
   amount: number;           // Total amount in INR
-  paymentMode: 'Cash' | 'Bank Transfer' | 'UPI' | 'Cheque' | 'FASTag Wallet';
+  paymentMode: string;
   paidTo?: string;          // Recipient / Vendor name
   createdAt?: string;
   updatedAt?: string;
@@ -89,10 +89,7 @@ function normalizeExpenseEntry(e: any): ExpenseEntry {
   const rawId = e.id ? String(e.id).trim() : '';
   const rawVeh = (e.vehicleNumber || e.vehicle_number || 'GENERAL').trim().toUpperCase();
 
-  const validModes: ExpenseEntry['paymentMode'][] = ['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'FASTag Wallet'];
-  const mode = validModes.includes(e.paymentMode || e.payment_mode)
-    ? (e.paymentMode || e.payment_mode)
-    : 'Cash';
+  const mode = (e.paymentMode || e.payment_mode || 'Cash').trim() || 'Cash';
 
   return {
     id: isValidUUID(rawId) ? rawId : generateUUID(),
@@ -184,12 +181,12 @@ export function getStoredExpenseCategories(): string[] {
   if (typeof window === 'undefined') return DEFAULT_EXPENSE_CATEGORIES;
   try {
     const raw = localStorage.getItem(CATEGORIES_STORAGE_KEY);
-    if (!raw) {
+    if (raw === null) {
       saveStoredExpenseCategories(DEFAULT_EXPENSE_CATEGORIES);
       return DEFAULT_EXPENSE_CATEGORIES;
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return Array.from(new Set(parsed.map((s) => String(s).trim()).filter(Boolean)));
     }
     return DEFAULT_EXPENSE_CATEGORIES;
@@ -220,6 +217,82 @@ export function addStoredExpenseCategory(category: string): string[] {
     return updated;
   }
   return current;
+}
+
+export function editStoredExpenseCategory(oldCategory: string, newCategory: string): string[] {
+  const cleanNew = newCategory.trim();
+  if (!cleanNew) return getStoredExpenseCategories();
+  const current = getStoredExpenseCategories();
+  const updated = current.map((c) => (c.toLowerCase() === oldCategory.toLowerCase() ? cleanNew : c));
+  saveStoredExpenseCategories(updated);
+  return updated;
+}
+
+export function deleteStoredExpenseCategory(category: string): string[] {
+  const current = getStoredExpenseCategories();
+  const updated = current.filter((c) => c.toLowerCase() !== category.toLowerCase());
+  saveStoredExpenseCategories(updated);
+  return updated;
+}
+
+const PAYMENT_MODES_STORAGE_KEY = 'aus_transport_expense_payment_modes_v1';
+export const EXPENSE_PAYMENT_MODES_CHANGE_EVENT = 'aus_expense_payment_modes_changed';
+
+export function getStoredPaymentModes(): string[] {
+  if (typeof window === 'undefined') return [...PAYMENT_MODES];
+  try {
+    const raw = localStorage.getItem(PAYMENT_MODES_STORAGE_KEY);
+    if (raw === null) {
+      saveStoredPaymentModes([...PAYMENT_MODES]);
+      return [...PAYMENT_MODES];
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return Array.from(new Set(parsed.map((s) => String(s).trim()).filter(Boolean)));
+    }
+    return [...PAYMENT_MODES];
+  } catch {
+    return [...PAYMENT_MODES];
+  }
+}
+
+export function saveStoredPaymentModes(modes: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const clean = Array.from(new Set(modes.map((s) => String(s).trim()).filter(Boolean)));
+    localStorage.setItem(PAYMENT_MODES_STORAGE_KEY, JSON.stringify(clean));
+    window.dispatchEvent(new CustomEvent(EXPENSE_PAYMENT_MODES_CHANGE_EVENT, { detail: clean }));
+  } catch (err) {
+    console.error('Error saving payment modes to localStorage:', err);
+  }
+}
+
+export function addStoredPaymentMode(mode: string): string[] {
+  const trimmed = mode.trim();
+  if (!trimmed) return getStoredPaymentModes();
+  const current = getStoredPaymentModes();
+  if (!current.some((m) => m.toLowerCase() === trimmed.toLowerCase())) {
+    const updated = [...current, trimmed];
+    saveStoredPaymentModes(updated);
+    return updated;
+  }
+  return current;
+}
+
+export function editStoredPaymentMode(oldMode: string, newMode: string): string[] {
+  const cleanNew = newMode.trim();
+  if (!cleanNew) return getStoredPaymentModes();
+  const current = getStoredPaymentModes();
+  const updated = current.map((m) => (m.toLowerCase() === oldMode.toLowerCase() ? cleanNew : m));
+  saveStoredPaymentModes(updated);
+  return updated;
+}
+
+export function deleteStoredPaymentMode(mode: string): string[] {
+  const current = getStoredPaymentModes();
+  const updated = current.filter((m) => m.toLowerCase() !== mode.toLowerCase());
+  saveStoredPaymentModes(updated);
+  return updated;
 }
 
 /**

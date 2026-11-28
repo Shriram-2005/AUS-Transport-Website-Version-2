@@ -173,12 +173,12 @@ export function getStoredCategories(): string[] {
   if (typeof window === 'undefined') return DEFAULT_MAINTENANCE_CATEGORIES;
   try {
     const raw = localStorage.getItem(CATEGORIES_STORAGE_KEY);
-    if (!raw) {
+    if (raw === null) {
       saveStoredCategories(DEFAULT_MAINTENANCE_CATEGORIES);
       return DEFAULT_MAINTENANCE_CATEGORIES;
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return Array.from(new Set(parsed.map((s) => String(s).trim()).filter(Boolean)));
     }
     return DEFAULT_MAINTENANCE_CATEGORIES;
@@ -211,6 +211,22 @@ export function addStoredCategory(category: string): string[] {
   return current;
 }
 
+export function editStoredCategory(oldCategory: string, newCategory: string): string[] {
+  const cleanNew = newCategory.trim();
+  if (!cleanNew) return getStoredCategories();
+  const current = getStoredCategories();
+  const updated = current.map((c) => (c.toLowerCase() === oldCategory.toLowerCase() ? cleanNew : c));
+  saveStoredCategories(updated);
+  return updated;
+}
+
+export function deleteStoredCategory(category: string): string[] {
+  const current = getStoredCategories();
+  const updated = current.filter((c) => c.toLowerCase() !== category.toLowerCase());
+  saveStoredCategories(updated);
+  return updated;
+}
+
 // ==============================================================================
 // Master Workshops Store
 // ==============================================================================
@@ -219,12 +235,12 @@ export function getStoredWorkshops(): string[] {
   if (typeof window === 'undefined') return DEFAULT_WORKSHOPS;
   try {
     const raw = localStorage.getItem(WORKSHOPS_STORAGE_KEY);
-    if (!raw) {
+    if (raw === null) {
       saveStoredWorkshops(DEFAULT_WORKSHOPS);
       return DEFAULT_WORKSHOPS;
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return Array.from(new Set(parsed.map((s) => String(s).trim()).filter(Boolean)));
     }
     return DEFAULT_WORKSHOPS;
@@ -255,6 +271,22 @@ export function addStoredWorkshop(workshop: string): string[] {
     return updated;
   }
   return current;
+}
+
+export function editStoredWorkshop(oldWorkshop: string, newWorkshop: string): string[] {
+  const cleanNew = newWorkshop.trim();
+  if (!cleanNew) return getStoredWorkshops();
+  const current = getStoredWorkshops();
+  const updated = current.map((w) => (w.toLowerCase() === oldWorkshop.toLowerCase() ? cleanNew : w));
+  saveStoredWorkshops(updated);
+  return updated;
+}
+
+export function deleteStoredWorkshop(workshop: string): string[] {
+  const current = getStoredWorkshops();
+  const updated = current.filter((w) => w.toLowerCase() !== workshop.toLowerCase());
+  saveStoredWorkshops(updated);
+  return updated;
 }
 
 /**

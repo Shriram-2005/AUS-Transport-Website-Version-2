@@ -37,8 +37,12 @@ import {
   deleteStoredMaintenanceEntry,
   getStoredCategories,
   addStoredCategory,
+  editStoredCategory,
+  deleteStoredCategory,
   getStoredWorkshops,
   addStoredWorkshop,
+  editStoredWorkshop,
+  deleteStoredWorkshop,
   filterMaintenanceEntries,
   calculateMaintenanceSummary,
   numberToWords,
@@ -47,6 +51,7 @@ import {
 } from '@/lib/maintenance';
 import { Vehicle, getStoredVehicles, VEHICLES_CHANGE_EVENT } from '@/lib/vehicles';
 import { CustomDatePicker } from './CustomDatePicker';
+import { EditableSelectDropdown } from './EditableSelectDropdown';
 import { KpiDashboardBar } from './KpiDashboardBar';
 import { KpiCardDefinition } from '@/lib/kpiManager';
 import { REFRESH_MODULE_EVENT } from '@/lib/headerEvents';
@@ -1342,22 +1347,14 @@ export function MaintenanceManager() {
                 <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 mb-1.5 block">
                   Select Vehicle *
                 </label>
-                <div className="relative">
-                  <select
-                    value={formVehicleNumber}
-                    onChange={(e) => setFormVehicleNumber(e.target.value)}
-                    required
-                    className="w-full appearance-none px-3.5 py-2.5 pr-10 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 font-mono text-sm font-bold focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
-                  >
-                    <option value="" disabled>Select vehicle</option>
-                    {vehicles.map((v) => (
-                      <option key={v.id} value={v.registrationNumber}>
-                        {v.registrationNumber}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+                <EditableSelectDropdown
+                  value={formVehicleNumber}
+                  options={vehicles.map((v) => v.registrationNumber)}
+                  onChange={(val) => setFormVehicleNumber(val)}
+                  title="Select Vehicle"
+                  placeholder="Select vehicle..."
+                  icon={<Truck className="w-4 h-4" />}
+                />
               </div>
 
               {/* 2-Column: Date & Bill Number */}
@@ -1387,84 +1384,22 @@ export function MaintenanceManager() {
                 </div>
               </div>
 
-              {/* Repair Category with Option to Add Custom */}
+              {/* Repair Category Selector matching Invoice Page Dropdown */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-sm font-bold text-gray-800 dark:text-zinc-200">
-                    Repair / Service Category *
-                  </label>
-                  {!isAddingNewCategory ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAddingNewCategory(true);
-                        setNewCategoryInput('');
-                      }}
-                      className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Custom Category</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingNewCategory(false)}
-                      className="text-xs font-semibold text-gray-500 hover:text-gray-700 dark:text-zinc-400 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-
-                {!isAddingNewCategory ? (
-                  <div className="relative">
-                    <select
-                      value={formCategory}
-                      onChange={(e) => {
-                        if (e.target.value === '__add_new__') {
-                          setIsAddingNewCategory(true);
-                          setNewCategoryInput('');
-                        } else {
-                          setFormCategory(e.target.value);
-                        }
-                      }}
-                      className="w-full appearance-none px-3.5 py-2.5 pr-10 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
-                    >
-                      {categoriesList.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                      <option value="__add_new__">+ Add New Service Category...</option>
-                    </select>
-                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="Enter new service category name..."
-                      value={newCategoryInput}
-                      onChange={(e) => setNewCategoryInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleSaveNewCategory();
-                        }
-                      }}
-                      autoFocus
-                      className="flex-1 px-3.5 py-2 rounded-xl border border-blue-400 dark:border-blue-500 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:ring-4 focus:ring-blue-500/10"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveNewCategory}
-                      disabled={!newCategoryInput.trim()}
-                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-                    >
-                      Save Category
-                    </button>
-                  </div>
-                )}
+                <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 mb-1.5 block">
+                  Repair / Service Category *
+                </label>
+                <EditableSelectDropdown
+                  value={formCategory}
+                  options={categoriesList}
+                  onChange={(val) => setFormCategory(val)}
+                  title="Select Service Category"
+                  placeholder="Select Service Category..."
+                  addPlaceholder="New service category..."
+                  onAddOption={(newCat) => setCategoriesList(addStoredCategory(newCat))}
+                  onEditOption={(oldCat, newCat) => setCategoriesList(editStoredCategory(oldCat, newCat))}
+                  onDeleteOption={(cat) => setCategoriesList(deleteStoredCategory(cat))}
+                />
               </div>
 
               {/* Manual Entry: Work Description & Spare Parts */}
@@ -1481,86 +1416,31 @@ export function MaintenanceManager() {
                 />
               </div>
 
-              {/* Workshop / Garage Selector with Add Option */}
+              {/* Workshop / Garage Selector matching Invoice Page Dropdown */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <Building2 className="w-4 h-4 text-gray-500" />
-                    <span>Workshop / Garage Name</span>
-                  </label>
-                  {!isAddingNewWorkshop ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAddingNewWorkshop(true);
-                        setNewWorkshopInput('');
-                      }}
-                      className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add New Workshop</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingNewWorkshop(false)}
-                      className="text-xs font-semibold text-gray-500 hover:text-gray-700 dark:text-zinc-400 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-
-                {!isAddingNewWorkshop ? (
-                  <div className="relative">
-                    <select
-                      value={formWorkshop}
-                      onChange={(e) => {
-                        if (e.target.value === '__add_new__') {
-                          setIsAddingNewWorkshop(true);
-                          setNewWorkshopInput('');
-                        } else {
-                          setFormWorkshop(e.target.value);
-                        }
-                      }}
-                      className="w-full appearance-none px-3.5 py-2.5 pr-10 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 cursor-pointer"
-                    >
-                      <option value="">Select Workshop (Optional)</option>
-                      {workshopsList.map((ws) => (
-                        <option key={ws} value={ws}>
-                          {ws}
-                        </option>
-                      ))}
-                      <option value="__add_new__">+ Add New Workshop...</option>
-                    </select>
-                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="Enter garage / workshop name..."
-                      value={newWorkshopInput}
-                      onChange={(e) => setNewWorkshopInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleSaveNewWorkshop();
-                        }
-                      }}
-                      autoFocus
-                      className="flex-1 px-3.5 py-2 rounded-xl border border-blue-400 dark:border-blue-500 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:ring-4 focus:ring-blue-500/10"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveNewWorkshop}
-                      disabled={!newWorkshopInput.trim()}
-                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-                    >
-                      Save Workshop
-                    </button>
-                  </div>
-                )}
+                <label className="text-sm font-bold text-gray-800 dark:text-zinc-200 mb-1.5 flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-gray-500" />
+                  <span>Workshop / Garage Name</span>
+                </label>
+                <EditableSelectDropdown
+                  value={formWorkshop}
+                  options={workshopsList}
+                  onChange={(val) => setFormWorkshop(val)}
+                  title="Select Workshop / Garage"
+                  placeholder="Select Workshop (Optional)"
+                  addPlaceholder="New workshop name..."
+                  allowClear={true}
+                  onAddOption={async (newWs) => {
+                    const updated = addStoredWorkshop(newWs);
+                    setWorkshopsList(updated);
+                    try {
+                      const supabase = createClient();
+                      await supabase.from('maintenance_workshops').upsert({ name: newWs }, { onConflict: 'name' });
+                    } catch {}
+                  }}
+                  onEditOption={(oldWs, newWs) => setWorkshopsList(editStoredWorkshop(oldWs, newWs))}
+                  onDeleteOption={(ws) => setWorkshopsList(deleteStoredWorkshop(ws))}
+                />
               </div>
 
               {/* 2-Column: Price (Amount) & Odometer Reading */}
