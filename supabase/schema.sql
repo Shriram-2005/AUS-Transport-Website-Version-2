@@ -820,6 +820,111 @@ DROP POLICY IF EXISTS "Allow anon delete trip_sheet_cell_values" ON public.trip_
 CREATE POLICY "Allow anon delete trip_sheet_cell_values"
   ON public.trip_sheet_cell_values FOR DELETE TO anon USING (true);
 
+-- ============================================================================
+-- 19. DOCUMENTS VAULT (CUSTOM CATEGORIES + VEHICLE/CATEGORY DOCUMENTS)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.document_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_categories_order ON public.document_categories(sort_order);
+
+ALTER TABLE public.document_categories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow authenticated read document_categories" ON public.document_categories;
+CREATE POLICY "Allow authenticated read document_categories"
+  ON public.document_categories FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated insert document_categories" ON public.document_categories;
+CREATE POLICY "Allow authenticated insert document_categories"
+  ON public.document_categories FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated update document_categories" ON public.document_categories;
+CREATE POLICY "Allow authenticated update document_categories"
+  ON public.document_categories FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated delete document_categories" ON public.document_categories;
+CREATE POLICY "Allow authenticated delete document_categories"
+  ON public.document_categories FOR DELETE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow anon read document_categories" ON public.document_categories;
+CREATE POLICY "Allow anon read document_categories"
+  ON public.document_categories FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert document_categories" ON public.document_categories;
+CREATE POLICY "Allow anon insert document_categories"
+  ON public.document_categories FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update document_categories" ON public.document_categories;
+CREATE POLICY "Allow anon update document_categories"
+  ON public.document_categories FOR UPDATE TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon delete document_categories" ON public.document_categories;
+CREATE POLICY "Allow anon delete document_categories"
+  ON public.document_categories FOR DELETE TO anon USING (true);
+
+CREATE TABLE IF NOT EXISTS public.documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  folder_key TEXT NOT NULL,
+  folder_type TEXT NOT NULL DEFAULT 'vehicle' CHECK (folder_type IN ('vehicle', 'category')),
+  title TEXT NOT NULL,
+  doc_type TEXT NOT NULL DEFAULT 'Other',
+  source_type TEXT NOT NULL DEFAULT 'drive_link' CHECK (source_type IN ('drive_link', 'pdf')),
+  drive_url TEXT DEFAULT '',
+  file_name TEXT DEFAULT '',
+  file_size BIGINT DEFAULT 0,
+  mime_type TEXT DEFAULT '',
+  file_data TEXT DEFAULT '',
+  expiry_date TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_folder_key ON public.documents(folder_key);
+CREATE INDEX IF NOT EXISTS idx_documents_order ON public.documents(sort_order);
+
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow authenticated read documents" ON public.documents;
+CREATE POLICY "Allow authenticated read documents"
+  ON public.documents FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated insert documents" ON public.documents;
+CREATE POLICY "Allow authenticated insert documents"
+  ON public.documents FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated update documents" ON public.documents;
+CREATE POLICY "Allow authenticated update documents"
+  ON public.documents FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated delete documents" ON public.documents;
+CREATE POLICY "Allow authenticated delete documents"
+  ON public.documents FOR DELETE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow anon read documents" ON public.documents;
+CREATE POLICY "Allow anon read documents"
+  ON public.documents FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert documents" ON public.documents;
+CREATE POLICY "Allow anon insert documents"
+  ON public.documents FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update documents" ON public.documents;
+CREATE POLICY "Allow anon update documents"
+  ON public.documents FOR UPDATE TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon delete documents" ON public.documents;
+CREATE POLICY "Allow anon delete documents"
+  ON public.documents FOR DELETE TO anon USING (true);
+
+
 
 
 

@@ -12,6 +12,7 @@ import { ExpenseManager } from '@/components/ExpenseManager';
 import { ProfitAndLossManager } from '@/components/ProfitAndLossManager';
 import { OverviewManager } from '@/components/OverviewManager';
 import { MasterTripSheetManager } from '@/components/MasterTripSheetManager';
+import { DocumentsManager } from '@/components/DocumentsManager';
 import { getDictionary } from '@/i18n/dictionaries';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -313,6 +314,8 @@ export default function DashboardPage() {
             <ProfitAndLossManager />
           ) : activeTab === 'tripSheet' ? (
             <MasterTripSheetManager />
+          ) : activeTab === 'documents' ? (
+            <DocumentsManager />
           ) : activeTab === 'overview' ? (
             <OverviewManager onNavigate={(tab) => navigateToTab(tab as any)} />
           ) : (
