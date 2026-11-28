@@ -1667,8 +1667,8 @@ export function FuelManager() {
           ADD / EDIT FUEL ENTRY MODAL
       ========================================================================= */}
       {(isAddModalOpen || editingEntry) && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full shadow-2xl p-6 relative space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full shadow-2xl p-6 relative space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
@@ -1886,7 +1886,7 @@ export function FuelManager() {
           VIEW ALL BUNK BILLS HISTORY DRAWER / MODAL FOR A VEHICLE
       ========================================================================= */}
       {historyVehicle && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto animate-in fade-in duration-150">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 overflow-y-auto animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-4xl w-full shadow-2xl p-6 relative my-8 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2.5">
@@ -2017,7 +2017,7 @@ export function FuelManager() {
           STATEMENT (PDF) GENERATOR MODAL
       ========================================================================= */}
       {statementVehicle && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full shadow-2xl p-6 relative space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2.5">
@@ -2207,7 +2207,7 @@ export function FuelManager() {
           DELETE CONFIRMATION MODAL
       ========================================================================= */}
       {deletingEntry && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-md w-full shadow-2xl p-6 relative space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900 flex items-center justify-center text-red-600">

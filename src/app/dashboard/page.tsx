@@ -291,7 +291,7 @@ export default function DashboardPage() {
         </aside>
 
         {/* Dashboard Main Workspace */}
-        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto min-w-0 print:p-0 print:m-0 print:overflow-visible print:h-auto">
+        <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto min-w-0 print:p-0 print:m-0 print:overflow-visible print:h-auto">
           {activeTab === 'invoices' ? (
             <InvoiceManager />
           ) : activeTab === 'vehicles' ? (
