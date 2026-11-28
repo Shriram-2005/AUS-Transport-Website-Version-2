@@ -16,6 +16,9 @@ import {
   AlertTriangle,
   Database,
   Check,
+  Calculator,
+  Link2,
+  PenLine,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { BillData, getBillTdsRate, parseMonthFromDate } from '@/lib/invoices';
@@ -24,6 +27,16 @@ import { MaintenanceEntry } from '@/lib/maintenance';
 import { ExpenseEntry } from '@/lib/expenses';
 import { Driver } from '@/lib/drivers';
 import { isDateInRange, parseDateToTimestamp } from '@/lib/profitAndLoss';
+import {
+  COL_META_ROW_KEY,
+  ColumnMetaConfig,
+  ColumnSourceType,
+  DB_LINK_FIELD_OPTIONS,
+  evaluateFormula,
+  parseColumnMeta,
+  validateFormula,
+} from '@/lib/tripSheetUtils';
+import { exportMasterTripSheetToExcel, MonthSummaryInfo, printMasterTripSheetPdf } from '@/lib/tripSheetExport';
 import { CustomDatePicker } from './CustomDatePicker';
 import { EditableSelectDropdown } from './EditableSelectDropdown';
 import { REFRESH_MODULE_EVENT } from '@/lib/headerEvents';
@@ -85,11 +98,18 @@ function formatDDMMYYYY(d: Date): string {
 
 interface RawInvoiceRecord extends BillData {
   consignorFromAddress?: string;
+  consigneeName?: string;
+  tdsPercentage?: number;
 }
 
 interface ExpensePillItem {
   category: string;
   amount: number;
+}
+
+interface VehicleMeta {
+  type: string;
+  capacity: string;
 }
 
 export function MasterTripSheetManager() {
@@ -104,9 +124,11 @@ export function MasterTripSheetManager() {
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [vehiclesList, setVehiclesList] = useState<string[]>([]);
+  const [vehicleMetaMap, setVehicleMetaMap] = useState<Record<string, VehicleMeta>>({});
 
-  // DB-backed columns & custom cell values
+  // DB-backed columns, column link/formula metadata, & custom cell values
   const [columns, setColumns] = useState<SheetColumnDef[]>(DEFAULT_SHEET_COLUMNS);
+  const [colMeta, setColMeta] = useState<Record<string, ColumnMetaConfig>>({});
   const [cellValues, setCellValues] = useState<Record<string, Record<string, string>>>({});
 
   // Filters
@@ -120,12 +142,19 @@ export function MasterTripSheetManager() {
   const [isInsertColOpen, setIsInsertColOpen] = useState(false);
   const [newColLabel, setNewColLabel] = useState('');
   const [newColType, setNewColType] = useState<'text' | 'number' | 'currency'>('text');
+  const [newColSourceType, setNewColSourceType] = useState<ColumnSourceType>('manual');
+  const [newColDbField, setNewColDbField] = useState<string>(DB_LINK_FIELD_OPTIONS[0].key);
+  const [newColFormula, setNewColFormula] = useState<string>('');
   const [insertAfterKey, setInsertAfterKey] = useState<string>('__end__');
   const [colSaving, setColSaving] = useState(false);
   const [colError, setColError] = useState('');
 
-  // Delete Column modal
+  // Delete Column modal (requires typing exact column name)
   const [deletingCol, setDeletingCol] = useState<SheetColumnDef | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+  // Export state
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   // Inline cell editing
   const [editingCell, setEditingCell] = useState<{ rowKey: string; colKey: string } | null>(null);
@@ -157,7 +186,7 @@ export function MasterTripSheetManager() {
       const supabase = createClient();
 
       const [vRes, iRes, fRes, mRes, eRes, dRes, colRes, cellRes] = await Promise.all([
-        supabase.from('vehicles').select('registration_number').order('registration_number', { ascending: true }),
+        supabase.from('vehicles').select('*').order('registration_number', { ascending: true }),
         supabase.from('invoices').select('*'),
         supabase.from('fuel_entries').select('*'),
         supabase.from('maintenance_entries').select('*'),
@@ -168,15 +197,23 @@ export function MasterTripSheetManager() {
       ]);
 
       const vehSet = new Set<string>();
+      const vMeta: Record<string, VehicleMeta> = {};
       const errors: string[] = [];
 
       if (vRes.error) errors.push(`vehicles: ${vRes.error.message}`);
       else if (vRes.data) {
         vRes.data.forEach((v: any) => {
           const reg = (v.registration_number || '').trim().toUpperCase();
-          if (reg) vehSet.add(reg);
+          if (reg) {
+            vehSet.add(reg);
+            vMeta[normalizeVeh(reg)] = {
+              type: (v.vehicle_type || v.type || '').trim(),
+              capacity: (v.capacity || v.load_capacity || '').trim(),
+            };
+          }
         });
       }
+      setVehicleMetaMap(vMeta);
 
       if (iRes.error) errors.push(`invoices: ${iRes.error.message}`);
       else if (iRes.data) {
@@ -185,6 +222,11 @@ export function MasterTripSheetManager() {
           const consignorFromAddress = (
             item.consignor?.address ||
             item.consignor?.name ||
+            ''
+          ).trim();
+          const consigneeName = (
+            item.consignee?.name ||
+            item.consignee?.address ||
             ''
           ).trim();
 
@@ -209,6 +251,8 @@ export function MasterTripSheetManager() {
               visibleTrips: rawTrips.length,
               status: item.payment_status || item.raw_data.status || 'unpaid',
               consignorFromAddress,
+              consigneeName,
+              tdsPercentage: Number(item.tds_percentage ?? item.raw_data.tdsPercentage) || 0,
             };
           }
           return {
@@ -227,6 +271,8 @@ export function MasterTripSheetManager() {
             rupeesInWordsText: item.amount_in_words || '',
             status: item.payment_status === 'Paid' ? 'paid' : 'unpaid',
             consignorFromAddress,
+            consigneeName,
+            tdsPercentage: Number(item.tds_percentage) || 0,
           };
         });
         setBills(mappedBills);
@@ -357,13 +403,19 @@ export function MasterTripSheetManager() {
         }
       }
 
-      // Cell overrides / custom column values from Supabase
+      // Cell overrides, custom column values & column link/formula metadata from Supabase
       if (!cellRes.error && cellRes.data) {
         const map: Record<string, Record<string, string>> = {};
+        const metaMap: Record<string, ColumnMetaConfig> = {};
         for (const cell of cellRes.data) {
-          if (!map[cell.row_key]) map[cell.row_key] = {};
-          map[cell.row_key][cell.column_key] = cell.value ?? '';
+          if (cell.row_key === COL_META_ROW_KEY) {
+            metaMap[cell.column_key] = parseColumnMeta(cell.value);
+          } else {
+            if (!map[cell.row_key]) map[cell.row_key] = {};
+            map[cell.row_key][cell.column_key] = cell.value ?? '';
+          }
         }
+        setColMeta(metaMap);
         setCellValues(map);
       }
     } catch (err: any) {
@@ -390,9 +442,21 @@ export function MasterTripSheetManager() {
   // Build rows strictly from Supabase database records
   const allRows = useMemo(() => {
     const driverRateMap = new Map<string, number>();
+    const driverMetaMap = new Map<string, { phone: string; licenseNumber: string; ratePerKm: number }>();
     for (const d of drivers) {
-      if (d.name) driverRateMap.set(d.name.trim().toLowerCase(), Number(d.ratePerKm) || 0);
-      if (d.id) driverRateMap.set(String(d.id), Number(d.ratePerKm) || 0);
+      const meta = {
+        phone: d.phone || '',
+        licenseNumber: d.licenseNumber || '',
+        ratePerKm: Number(d.ratePerKm) || 0,
+      };
+      if (d.name) {
+        driverRateMap.set(d.name.trim().toLowerCase(), meta.ratePerKm);
+        driverMetaMap.set(d.name.trim().toLowerCase(), meta);
+      }
+      if (d.id) {
+        driverRateMap.set(String(d.id), meta.ratePerKm);
+        driverMetaMap.set(String(d.id), meta);
+      }
     }
 
     const displayVehMap = new Map<string, string>();
@@ -453,7 +517,7 @@ export function MasterTripSheetManager() {
     // Fill-to-fill mileage: for each fuel fill date on a vehicle, sum trip running KM from previous fill date up to this fill date, divided by this fill's liters.
     const fuelByKey = new Map<
       string,
-      { liters: number; amount: number; rate: number; particulars: Set<string>; mileage: number }
+      { liters: number; amount: number; rate: number; particulars: Set<string>; mileage: number; bunkNames: Set<string>; billNumbers: Set<string> }
     >();
 
     const fuelByVehicle = new Map<string, FuelEntry[]>();
@@ -470,7 +534,7 @@ export function MasterTripSheetManager() {
 
     for (const [vKey, list] of fuelByVehicle.entries()) {
       // Group same-day fills first, sorted chronologically ascending
-      const dayMap = new Map<string, { ts: number; dateKey: string; liters: number; amount: number; particulars: Set<string> }>();
+      const dayMap = new Map<string, { ts: number; dateKey: string; liters: number; amount: number; particulars: Set<string>; bunkNames: Set<string>; billNumbers: Set<string> }>();
       for (const f of list) {
         const dKey = normalizeDateKey(f.date);
         const ts = parseDateToTimestamp(f.date);
@@ -480,10 +544,14 @@ export function MasterTripSheetManager() {
           liters: 0,
           amount: 0,
           particulars: new Set<string>(),
+          bunkNames: new Set<string>(),
+          billNumbers: new Set<string>(),
         };
         existing.liters += Number(f.liters) || 0;
         existing.amount += Number(f.totalAmount) || 0;
         if (f.particulars) existing.particulars.add(f.particulars);
+        if (f.bunkName) existing.bunkNames.add(f.bunkName);
+        if (f.billNumber) existing.billNumbers.add(f.billNumber);
         dayMap.set(dKey, existing);
       }
 
@@ -533,12 +601,15 @@ export function MasterTripSheetManager() {
           rate,
           particulars: currFill.particulars,
           mileage,
+          bunkNames: currFill.bunkNames,
+          billNumbers: currFill.billNumbers,
         });
       }
     }
 
     // 3. Index Maintenance by (vehKey|dateKey)
     const maintByKey = new Map<string, number>();
+    const maintMetaByKey = new Map<string, { workshops: Set<string>; categories: Set<string> }>();
     for (const m of maintenanceEntries) {
       const vKey = normalizeVeh(m.vehicleNumber);
       const dKey = normalizeDateKey(m.date);
@@ -546,10 +617,15 @@ export function MasterTripSheetManager() {
       if (m.vehicleNumber && !displayVehMap.has(vKey)) displayVehMap.set(vKey, m.vehicleNumber.trim().toUpperCase());
       if (m.date && !displayDateMap.has(dKey)) displayDateMap.set(dKey, m.date.trim());
       maintByKey.set(k, (maintByKey.get(k) || 0) + (Number(m.amount) || 0));
+      const meta = maintMetaByKey.get(k) || { workshops: new Set<string>(), categories: new Set<string>() };
+      if (m.workshopName) meta.workshops.add(m.workshopName);
+      if (m.category) meta.categories.add(m.category);
+      maintMetaByKey.set(k, meta);
     }
 
     // 4. Index Expenses by (vehKey|dateKey) keeping per-category breakdown for pill display
     const expByKey = new Map<string, Map<string, number>>();
+    const expMetaByKey = new Map<string, { paidTo: Set<string>; modes: Set<string> }>();
     for (const exp of expenses) {
       const vKey = normalizeVeh(exp.vehicleNumber);
       const dKey = normalizeDateKey(exp.date);
@@ -561,6 +637,11 @@ export function MasterTripSheetManager() {
       const catName = (exp.category || 'Other Expense').trim();
       catMap.set(catName, (catMap.get(catName) || 0) + (Number(exp.amount) || 0));
       expByKey.set(k, catMap);
+
+      const eMeta = expMetaByKey.get(k) || { paidTo: new Set<string>(), modes: new Set<string>() };
+      if (exp.paidTo) eMeta.paidTo.add(exp.paidTo);
+      if (exp.paymentMode) eMeta.modes.add(exp.paymentMode);
+      expMetaByKey.set(k, eMeta);
     }
 
     const matchedKeys = new Set<string>();
@@ -638,6 +719,15 @@ export function MasterTripSheetManager() {
       const rowKey = `${bill.billNumber}_${tripIndex}`;
       const parsedMonth = parseMonthFromDate(tripDate);
 
+      const tdsAmount = Math.round((freightAmount + rtoPerTrip) * (tdsRate / 100));
+      const dMeta =
+        (trip.driverId && driverMetaMap.get(String(trip.driverId))) ||
+        (trip.driverName && driverMetaMap.get(trip.driverName.trim().toLowerCase())) ||
+        null;
+      const vMeta = vehicleMetaMap[vehKey];
+      const mMeta = maintMetaByKey.get(key);
+      const eMeta = expMetaByKey.get(key);
+
       const row: Record<string, any> = {
         rowKey,
         billNumber: bill.billNumber,
@@ -674,6 +764,26 @@ export function MasterTripSheetManager() {
         billAmount,
         profit,
         loss,
+        __db: {
+          'invoice.billNumber': bill.billNumber ? `INV-${bill.billNumber}` : '',
+          'invoice.companyName': bill.consigneeName || '',
+          'invoice.paymentStatus': String(bill.status || '').toLowerCase() === 'paid' ? 'Paid' : 'Unpaid',
+          'invoice.tdsPercentage': tdsRate,
+          'invoice.tdsAmount': tdsAmount,
+          'invoice.keralaRtoPerTrip': Math.round(rtoPerTrip),
+          'invoice.pnlRevenue': pnlRevenue,
+          'driver.phone': dMeta?.phone || '',
+          'driver.licenseNumber': dMeta?.licenseNumber || '',
+          'driver.ratePerKm': driverRate,
+          'vehicle.type': vMeta?.type || '',
+          'vehicle.capacity': vMeta?.capacity || '',
+          'fuel.bunkName': fuelGroup ? Array.from(fuelGroup.bunkNames).join(', ') : '',
+          'fuel.billNumber': fuelGroup ? Array.from(fuelGroup.billNumbers).join(', ') : '',
+          'maintenance.workshopName': mMeta ? Array.from(mMeta.workshops).join(', ') : '',
+          'maintenance.category': mMeta ? Array.from(mMeta.categories).join(', ') : '',
+          'expense.paidTo': eMeta ? Array.from(eMeta.paidTo).join(', ') : '',
+          'expense.paymentMode': eMeta ? Array.from(eMeta.modes).join(', ') : '',
+        } as Record<string, string | number>,
       };
 
       const overrides = cellValues[rowKey];
@@ -726,6 +836,10 @@ export function MasterTripSheetManager() {
       const rowKey = `extra_${vKey}_${dKey}`;
       const parsedMonth = parseMonthFromDate(dateDisplay);
 
+      const vMeta = vehicleMetaMap[vKey];
+      const mMeta = maintMetaByKey.get(extraKey);
+      const eMeta = expMetaByKey.get(extraKey);
+
       const extraRow: Record<string, any> = {
         rowKey,
         billNumber: 0,
@@ -759,6 +873,26 @@ export function MasterTripSheetManager() {
         billAmount: 0,
         profit: 0,
         loss: totalExpenses,
+        __db: {
+          'invoice.billNumber': '',
+          'invoice.companyName': '',
+          'invoice.paymentStatus': '',
+          'invoice.tdsPercentage': 0,
+          'invoice.tdsAmount': 0,
+          'invoice.keralaRtoPerTrip': 0,
+          'invoice.pnlRevenue': 0,
+          'driver.phone': '',
+          'driver.licenseNumber': '',
+          'driver.ratePerKm': 0,
+          'vehicle.type': vMeta?.type || '',
+          'vehicle.capacity': vMeta?.capacity || '',
+          'fuel.bunkName': fuelGroup ? Array.from(fuelGroup.bunkNames).join(', ') : '',
+          'fuel.billNumber': fuelGroup ? Array.from(fuelGroup.billNumbers).join(', ') : '',
+          'maintenance.workshopName': mMeta ? Array.from(mMeta.workshops).join(', ') : '',
+          'maintenance.category': mMeta ? Array.from(mMeta.categories).join(', ') : '',
+          'expense.paidTo': eMeta ? Array.from(eMeta.paidTo).join(', ') : '',
+          'expense.paymentMode': eMeta ? Array.from(eMeta.modes).join(', ') : '',
+        } as Record<string, string | number>,
       };
 
       const overrides = cellValues[rowKey];
@@ -771,13 +905,29 @@ export function MasterTripSheetManager() {
       rows.push(extraRow);
     }
 
+    // Apply DB-linked and Formula columns across all rows (db_link first, then formula)
+    for (const row of rows) {
+      for (const col of columns) {
+        const meta = colMeta[col.column_key];
+        if (meta?.sourceType === 'db_link' && meta.dbField) {
+          row[col.column_key] = row.__db?.[meta.dbField] ?? '';
+        }
+      }
+      for (const col of columns) {
+        const meta = colMeta[col.column_key];
+        if (meta?.sourceType === 'formula' && meta.formula) {
+          row[col.column_key] = evaluateFormula(meta.formula, row, col.data_type);
+        }
+      }
+    }
+
     rows.sort((a, b) => {
       if (b.timestamp !== a.timestamp) return b.timestamp - a.timestamp;
       return (Number(b.billNumber) || 0) - (Number(a.billNumber) || 0);
     });
 
     return rows;
-  }, [bills, fuelEntries, maintenanceEntries, expenses, drivers, cellValues]);
+  }, [bills, fuelEntries, maintenanceEntries, expenses, drivers, vehicleMetaMap, cellValues, colMeta, columns]);
 
   // Apply Search, Vehicle, and Date filters
   const filteredRows = useMemo(() => {
@@ -807,6 +957,22 @@ export function MasterTripSheetManager() {
       return true;
     });
   }, [allRows, searchQuery, vehicleFilter, fromDate, toDate]);
+
+  // Monthly Net Profit / Net Loss summary for month headers
+  const monthSummaries = useMemo(() => {
+    const map = new Map<string, MonthSummaryInfo>();
+    for (const row of filteredRows) {
+      const mKey = row.monthKey || 'unknown';
+      const existing = map.get(mKey) || { profit: 0, loss: 0, net: 0 };
+      const p = Number(row.profit) || 0;
+      const l = Number(row.loss) || 0;
+      existing.profit += p;
+      existing.loss += l;
+      existing.net = existing.profit - existing.loss;
+      map.set(mKey, existing);
+    }
+    return map;
+  }, [filteredRows]);
 
   // Column Totals for footer
   const columnTotals = useMemo(() => {
@@ -860,11 +1026,38 @@ export function MasterTripSheetManager() {
       return;
     }
 
+    if (newColSourceType === 'db_link' && !newColDbField) {
+      setColError('Please select a database field to link.');
+      return;
+    }
+
+    if (newColSourceType === 'formula') {
+      const validKeys = new Set(columns.map((c) => c.column_key));
+      const errMsg = validateFormula(newColFormula, validKeys);
+      if (errMsg) {
+        setColError(`Formula error: ${errMsg}`);
+        return;
+      }
+    }
+
     const baseKey = cleanLabel
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '');
     const column_key = `custom_${baseKey || 'col'}_${Date.now().toString().slice(-4)}`;
+
+    const effectiveDataType: 'text' | 'number' | 'currency' =
+      newColSourceType === 'db_link'
+        ? DB_LINK_FIELD_OPTIONS.find((f) => f.key === newColDbField)?.dataType || newColType
+        : newColSourceType === 'formula' && newColType === 'text'
+        ? 'number'
+        : newColType;
+
+    const metaConfig: ColumnMetaConfig = {
+      sourceType: newColSourceType,
+      ...(newColSourceType === 'db_link' ? { dbField: newColDbField } : {}),
+      ...(newColSourceType === 'formula' ? { formula: newColFormula.trim() } : {}),
+    };
 
     setColSaving(true);
     try {
@@ -874,7 +1067,7 @@ export function MasterTripSheetManager() {
       const newCol: SheetColumnDef = {
         column_key,
         label: cleanLabel,
-        data_type: newColType,
+        data_type: effectiveDataType,
         sort_order: ordered.length + 1,
         is_default: false,
       };
@@ -907,6 +1100,19 @@ export function MasterTripSheetManager() {
         return;
       }
 
+      // Persist link / formula config in Supabase trip_sheet_cell_values (__col_meta__)
+      if (newColSourceType !== 'manual') {
+        await supabase.from('trip_sheet_cell_values').upsert(
+          {
+            row_key: COL_META_ROW_KEY,
+            column_key: newCol.column_key,
+            value: JSON.stringify(metaConfig),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'row_key,column_key' }
+        );
+      }
+
       for (const c of reindexed) {
         if (c.column_key !== newCol.column_key) {
           await supabase
@@ -916,9 +1122,12 @@ export function MasterTripSheetManager() {
         }
       }
 
+      setColMeta((prev) => ({ ...prev, [newCol.column_key]: metaConfig }));
       setColumns(reindexed);
       setNewColLabel('');
       setNewColType('text');
+      setNewColSourceType('manual');
+      setNewColFormula('');
       setInsertAfterKey('__end__');
       setIsInsertColOpen(false);
     } catch (err: any) {
@@ -931,6 +1140,7 @@ export function MasterTripSheetManager() {
   // Delete Column from Supabase DB
   const handleConfirmDeleteColumn = async () => {
     if (!deletingCol) return;
+    if (deleteConfirmText.trim() !== deletingCol.label.trim()) return;
     const targetKey = deletingCol.column_key;
 
     try {
@@ -943,12 +1153,18 @@ export function MasterTripSheetManager() {
       if (delColErr) {
         setDbError(`Database error deleting column: ${delColErr.message}`);
         setDeletingCol(null);
+        setDeleteConfirmText('');
         return;
       }
 
       await supabase.from('trip_sheet_cell_values').delete().eq('column_key', targetKey);
 
       setColumns((prev) => prev.filter((c) => c.column_key !== targetKey));
+      setColMeta((prev) => {
+        const next = { ...prev };
+        delete next[targetKey];
+        return next;
+      });
       setCellValues((prev) => {
         const next: Record<string, Record<string, string>> = {};
         for (const [rKey, colsObj] of Object.entries(prev)) {
@@ -962,6 +1178,7 @@ export function MasterTripSheetManager() {
       setDbError(err?.message || 'Error deleting column from database.');
     } finally {
       setDeletingCol(null);
+      setDeleteConfirmText('');
     }
   };
 
@@ -1027,50 +1244,51 @@ export function MasterTripSheetManager() {
     }
   };
 
-  // Export CSV (Excel compatible)
-  const handleExportCsv = () => {
-    const escapeCsv = (val: any) => {
-      const str = String(val ?? '');
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    };
+  const buildFilterSummaryText = () => {
+    const periodText =
+      periodPreset === 'all'
+        ? 'All Time'
+        : periodPreset === 'month'
+        ? 'This Month'
+        : periodPreset === '3months'
+        ? 'Last 3 Months'
+        : `${fromDate || 'Start'} to ${toDate || 'End'}`;
+    const vehText = vehicleFilter ? `Vehicle: ${vehicleFilter}` : 'All Vehicles';
+    const searchText = searchQuery.trim() ? `Search: "${searchQuery.trim()}"` : '';
+    return [periodText, vehText, searchText].filter(Boolean).join('  |  ');
+  };
 
-    const headers = ['#', ...columns.map((c) => c.label)].map(escapeCsv).join(',');
-    const body = filteredRows.map((row, idx) => {
-      const cells = [
-        idx + 1,
-        ...columns.map((c) => {
-          if (c.column_key === 'expensesTotal') {
-            const pills = (row.expensePills || []) as ExpensePillItem[];
-            if (pills.length > 0) {
-              return pills.map((p) => `${p.category}: Rs.${p.amount}`).join(' | ');
-            }
-          }
-          return row[c.column_key] ?? '';
-        }),
-      ];
-      return cells.map(escapeCsv).join(',');
+  // Export styled Excel (.xlsx)
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
+    try {
+      await exportMasterTripSheetToExcel({
+        columns,
+        rows: filteredRows,
+        columnTotals,
+        monthSummaries,
+        showMonthHeaders: periodPreset === 'all',
+        dateTag: formatDDMMYYYY(new Date()),
+        filterSummary: buildFilterSummaryText(),
+      });
+    } catch (err: any) {
+      setDbError(err?.message || 'Failed to export Excel workbook.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  // Print clean PDF containing only the table columns and rows
+  const handlePrintPdf = () => {
+    printMasterTripSheetPdf({
+      columns,
+      rows: filteredRows,
+      columnTotals,
+      monthSummaries,
+      showMonthHeaders: periodPreset === 'all',
+      dateTag: formatDDMMYYYY(new Date()),
+      filterSummary: buildFilterSummaryText(),
     });
-
-    const totalsRow = [
-      'TOTAL',
-      ...columns.map((c) => (columnTotals[c.column_key] !== undefined ? columnTotals[c.column_key] : '')),
-    ]
-      .map(escapeCsv)
-      .join(',');
-
-    const csvContent = [headers, ...body, totalsRow].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `AUS_Transport_Master_Trip_Sheet_${formatDDMMYYYY(new Date())}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   const formatCellDisplay = (row: Record<string, any>, col: SheetColumnDef) => {
@@ -1115,6 +1333,10 @@ export function MasterTripSheetManager() {
             onClick={() => {
               setColError('');
               setNewColLabel('');
+              setNewColType('text');
+              setNewColSourceType('manual');
+              setNewColDbField(DB_LINK_FIELD_OPTIONS[0].key);
+              setNewColFormula('');
               setIsInsertColOpen(true);
             }}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
@@ -1135,20 +1357,22 @@ export function MasterTripSheetManager() {
 
           <button
             type="button"
-            onClick={handleExportCsv}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+            disabled={exportingExcel || filteredRows.length === 0}
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
           >
-            <Download className="w-4 h-4" />
-            <span>Export Excel (CSV)</span>
+            {exportingExcel ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            <span>{exportingExcel ? 'Exporting...' : 'Export Excel (.xlsx)'}</span>
           </button>
 
           <button
             type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 text-xs font-semibold transition-all cursor-pointer"
+            disabled={filteredRows.length === 0}
+            onClick={handlePrintPdf}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 text-xs font-semibold transition-all cursor-pointer"
           >
             <Printer className="w-4 h-4" />
-            <span>Print</span>
+            <span>Print PDF</span>
           </button>
         </div>
       </div>
@@ -1287,6 +1511,7 @@ export function MasterTripSheetManager() {
                   </th>
                   {columns.map((col) => {
                     const isNumeric = col.data_type === 'number' || col.data_type === 'currency';
+                    const meta = colMeta[col.column_key];
                     return (
                       <th
                         key={col.column_key}
@@ -1295,10 +1520,31 @@ export function MasterTripSheetManager() {
                         } ${!col.is_default ? 'bg-blue-50/70 dark:bg-blue-950/30' : ''}`}
                       >
                         <div className={`flex items-center gap-1.5 ${isNumeric ? 'justify-end' : 'justify-between'}`}>
-                          <span>{col.label}</span>
+                          <span className="inline-flex items-center gap-1">
+                            <span>{col.label}</span>
+                            {meta?.sourceType === 'db_link' && (
+                              <span
+                                title={`Linked to DB: ${meta.dbField}`}
+                                className="px-1 py-0.2 rounded text-[9px] font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300"
+                              >
+                                DB
+                              </span>
+                            )}
+                            {meta?.sourceType === 'formula' && (
+                              <span
+                                title={`Formula: ${meta.formula}`}
+                                className="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300"
+                              >
+                                fx
+                              </span>
+                            )}
+                          </span>
                           <button
                             type="button"
-                            onClick={() => setDeletingCol(col)}
+                            onClick={() => {
+                              setDeleteConfirmText('');
+                              setDeletingCol(col);
+                            }}
                             title={`Delete "${col.label}" column`}
                             className="p-0.5 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors cursor-pointer no-print"
                           >
@@ -1320,18 +1566,37 @@ export function MasterTripSheetManager() {
 
                   return (
                     <React.Fragment key={row.rowKey}>
-                      {showMonthHeader && (
-                        <tr className="bg-slate-200/80 dark:bg-zinc-800/95 border-y-2 border-slate-300 dark:border-zinc-700">
-                          <td
-                            colSpan={columns.length + 1}
-                            className="py-2.5 px-4 text-left"
-                          >
-                            <span className="text-base sm:text-lg font-black uppercase tracking-wide text-gray-900 dark:text-white">
-                              {row.monthLabel}
-                            </span>
-                          </td>
-                        </tr>
-                      )}
+                      {showMonthHeader && (() => {
+                        const mSummary = monthSummaries.get(row.monthKey);
+                        const netMonth = mSummary ? mSummary.net : 0;
+                        const isNetProfit = netMonth >= 0;
+                        return (
+                          <tr className="bg-slate-200/80 dark:bg-zinc-800/95 border-y-2 border-slate-300 dark:border-zinc-700">
+                            <td
+                              colSpan={columns.length + 1}
+                              className="py-2.5 px-4 text-left"
+                            >
+                              <div className="flex flex-wrap items-center gap-3">
+                                <span className="text-base sm:text-lg font-black uppercase tracking-wide text-gray-900 dark:text-white">
+                                  {row.monthLabel}
+                                </span>
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold border ${
+                                    isNetProfit
+                                      ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                                      : 'bg-red-100 dark:bg-red-950/70 text-red-800 dark:text-red-300 border-red-300 dark:border-red-700'
+                                  }`}
+                                >
+                                  <span>{isNetProfit ? 'Net Profit:' : 'Net Loss:'}</span>
+                                  <span className="font-mono">
+                                    Rs.{Math.round(Math.abs(netMonth)).toLocaleString('en-IN')}
+                                  </span>
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })()}
                       <tr
                         className={`hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors ${
                           rowIdx % 2 === 1 ? 'bg-gray-50/50 dark:bg-zinc-900/50' : 'bg-white dark:bg-zinc-900'
@@ -1342,8 +1607,12 @@ export function MasterTripSheetManager() {
                         </td>
                         {columns.map((col) => {
                           const isNumeric = col.data_type === 'number' || col.data_type === 'currency';
+                          const meta = colMeta[col.column_key];
+                          const isComputedCol = meta?.sourceType === 'db_link' || meta?.sourceType === 'formula';
                           const isEditing =
-                            editingCell?.rowKey === row.rowKey && editingCell?.colKey === col.column_key;
+                            !isComputedCol &&
+                            editingCell?.rowKey === row.rowKey &&
+                            editingCell?.colKey === col.column_key;
 
                           const isProfit = col.column_key === 'profit' && Number(row.profit) > 0;
                           const isLoss = col.column_key === 'loss' && Number(row.loss) > 0;
@@ -1352,11 +1621,20 @@ export function MasterTripSheetManager() {
                             <td
                               key={col.column_key}
                               onDoubleClick={() => {
+                                if (isComputedCol) return;
                                 setEditingCell({ rowKey: row.rowKey, colKey: col.column_key });
                                 setEditingCellVal(String(row[col.column_key] ?? ''));
                               }}
-                              title="Double-click to edit cell value"
-                              className={`border-r border-gray-200 dark:border-zinc-800 py-2 px-3 whitespace-nowrap cursor-cell ${
+                              title={
+                                meta?.sourceType === 'db_link'
+                                  ? `Auto-linked from database (${meta.dbField})`
+                                  : meta?.sourceType === 'formula'
+                                  ? `Auto-calculated (${meta.formula})`
+                                  : 'Double-click to edit cell value'
+                              }
+                              className={`border-r border-gray-200 dark:border-zinc-800 py-2 px-3 whitespace-nowrap ${
+                                isComputedCol ? 'cursor-default' : 'cursor-cell'
+                              } ${
                                 isNumeric ? 'text-right font-mono' : 'text-left'
                               } ${
                                 isProfit
@@ -1470,7 +1748,7 @@ export function MasterTripSheetManager() {
           onClick={() => setIsInsertColOpen(false)}
         >
           <div
-            className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-md w-full shadow-2xl p-6 space-y-4"
+            className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full max-h-[90dvh] overflow-y-auto shadow-2xl p-6 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-800">
@@ -1481,7 +1759,7 @@ export function MasterTripSheetManager() {
                 <div>
                   <h3 className="text-base font-bold text-gray-900 dark:text-white">Insert New Column</h3>
                   <p className="text-xs text-gray-500 dark:text-zinc-400">
-                    Saved directly to Supabase database
+                    Manual input, live SQL database link, or row formula
                   </p>
                 </div>
               </div>
@@ -1508,13 +1786,160 @@ export function MasterTripSheetManager() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Advance Paid / Remarks"
+                  placeholder="e.g. Margin Per KM / Consignee / TDS Amount"
                   value={newColLabel}
                   onChange={(e) => setNewColLabel(e.target.value)}
                   autoFocus
                   className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-sm font-semibold focus:outline-none focus:border-blue-600"
                 />
               </div>
+
+              {/* Column Data Source */}
+              <div>
+                <label className="text-xs font-bold text-gray-700 dark:text-zinc-300 mb-1.5 block">
+                  Column Data Source
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'manual', label: 'Manual Entry', icon: PenLine },
+                    { id: 'db_link', label: 'Link DB Field', icon: Link2 },
+                    { id: 'formula', label: 'Live Formula', icon: Calculator },
+                  ].map((src) => {
+                    const Icon = src.icon;
+                    return (
+                      <button
+                        key={src.id}
+                        type="button"
+                        onClick={() => {
+                          const next = src.id as ColumnSourceType;
+                          setNewColSourceType(next);
+                          if (next === 'formula' && newColType === 'text') {
+                            setNewColType('currency');
+                          }
+                          if (next === 'db_link') {
+                            const matched = DB_LINK_FIELD_OPTIONS.find((f) => f.key === newColDbField);
+                            if (matched) setNewColType(matched.dataType);
+                          }
+                        }}
+                        className={`py-2 px-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          newColSourceType === src.id
+                            ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-500 text-blue-700 dark:text-blue-300'
+                            : 'bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-700 dark:text-zinc-300'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5 shrink-0" />
+                        <span>{src.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* DB Link Field Picker */}
+              {newColSourceType === 'db_link' && (
+                <div className="p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 space-y-2">
+                  <label className="text-xs font-bold text-indigo-900 dark:text-indigo-200 block">
+                    Select Database Field to Link *
+                  </label>
+                  <select
+                    value={newColDbField}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewColDbField(val);
+                      const matched = DB_LINK_FIELD_OPTIONS.find((f) => f.key === val);
+                      if (matched) {
+                        setNewColType(matched.dataType);
+                        if (!newColLabel.trim()) setNewColLabel(matched.label);
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-zinc-900 text-xs font-semibold text-gray-900 dark:text-zinc-100 focus:outline-none focus:border-indigo-500"
+                  >
+                    {(['Invoice', 'Driver', 'Vehicle', 'Fuel & Maintenance', 'Expenses'] as const).map((grp) => (
+                      <optgroup key={grp} label={grp}>
+                        {DB_LINK_FIELD_OPTIONS.filter((opt) => opt.group === grp).map((opt) => (
+                          <option key={opt.key} value={opt.key}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                    Populated automatically from your live Supabase records for every matching trip and date.
+                  </p>
+                </div>
+              )}
+
+              {/* Live Formula Builder */}
+              {newColSourceType === 'formula' && (() => {
+                const validKeys = new Set(columns.map((c) => c.column_key));
+                const formulaErr = newColFormula.trim() ? validateFormula(newColFormula, validKeys) : null;
+                const sampleRow = filteredRows[0] || allRows[0];
+                const sampleResult =
+                  sampleRow && newColFormula.trim() && !formulaErr
+                    ? evaluateFormula(newColFormula, sampleRow, newColType)
+                    : null;
+
+                return (
+                  <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 space-y-2.5">
+                    <label className="text-xs font-bold text-amber-900 dark:text-amber-200 block">
+                      Formula Expression *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. freightAmount - totalExpenses or billAmount / runningKm"
+                      value={newColFormula}
+                      onChange={(e) => setNewColFormula(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-zinc-900 font-mono text-xs font-semibold text-gray-900 dark:text-zinc-100 focus:outline-none focus:border-amber-500"
+                    />
+                    <div className="flex flex-wrap items-center gap-1">
+                      {['+', '-', '*', '/', '(', ')'].map((op) => (
+                        <button
+                          key={op}
+                          type="button"
+                          onClick={() => setNewColFormula((prev) => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}${op} `)}
+                          className="px-2 py-0.5 rounded-md bg-white dark:bg-zinc-800 border border-amber-300 dark:border-amber-700 text-xs font-mono font-bold text-amber-900 dark:text-amber-200 hover:bg-amber-100 cursor-pointer"
+                        >
+                          {op}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 block">
+                        Click column to insert:
+                      </span>
+                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                        {columns
+                          .filter((c) => c.data_type === 'number' || c.data_type === 'currency')
+                          .map((c) => (
+                            <button
+                              key={c.column_key}
+                              type="button"
+                              onClick={() =>
+                                setNewColFormula((prev) => `${prev}${prev && !prev.endsWith(' ') && !prev.endsWith('(') ? ' ' : ''}${c.column_key}`)
+                              }
+                              className="px-2 py-0.5 rounded-full bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 text-[10px] font-semibold text-gray-700 dark:text-zinc-200 hover:border-amber-500 cursor-pointer"
+                            >
+                              {c.label}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                    {formulaErr ? (
+                      <p className="text-[11px] font-semibold text-red-600 dark:text-red-400">{formulaErr}</p>
+                    ) : sampleResult !== null ? (
+                      <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                        Row 1 Live Preview:{' '}
+                        <span className="font-mono font-bold">
+                          {newColType === 'currency'
+                            ? `Rs.${Math.round(sampleResult).toLocaleString('en-IN')}`
+                            : sampleResult}
+                        </span>
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })()}
 
               <div>
                 <label className="text-xs font-bold text-gray-700 dark:text-zinc-300 mb-1.5 block">
@@ -1529,8 +1954,9 @@ export function MasterTripSheetManager() {
                     <button
                       key={t.id}
                       type="button"
+                      disabled={newColSourceType === 'formula' && t.id === 'text'}
                       onClick={() => setNewColType(t.id as 'text' | 'number' | 'currency')}
-                      className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer disabled:opacity-40 ${
                         newColType === t.id
                           ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-500 text-blue-700 dark:text-blue-300'
                           : 'bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-700 dark:text-zinc-300'
@@ -1597,38 +2023,64 @@ export function MasterTripSheetManager() {
       {deletingCol && (
         <div
           className="fixed inset-0 !m-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
-          onClick={() => setDeletingCol(null)}
+          onClick={() => {
+            setDeletingCol(null);
+            setDeleteConfirmText('');
+          }}
         >
           <div
-            className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-sm w-full shadow-2xl p-6 space-y-4"
+            className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-md w-full shadow-2xl p-6 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
-                <Trash2 className="w-5 h-5" />
+                <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white">Delete Column</h3>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">Warning: Delete Column</h3>
                 <p className="text-xs text-gray-500 dark:text-zinc-400">
-                  Remove &quot;{deletingCol.label}&quot; from database?
+                  Permanently remove &quot;{deletingCol.label}&quot; from database
                 </p>
               </div>
             </div>
-            <p className="text-xs text-gray-600 dark:text-zinc-300">
-              This removes the column from the Master Trip Sheet in Supabase (underlying Invoices/Fuel/Expenses records are untouched).
-            </p>
+
+            <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-xs text-red-800 dark:text-red-300 space-y-1">
+              <p className="font-bold">This action cannot be undone.</p>
+              <p>
+                Deleting this column will remove it from the Master Trip Sheet and permanently erase any saved cell values or formula/database link settings for this column in Supabase.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-zinc-300 mb-1.5 block">
+                Type <span className="font-mono text-red-600 dark:text-red-400 select-all">{deletingCol.label}</span> to confirm deletion:
+              </label>
+              <textarea
+                rows={2}
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder={`Type "${deletingCol.label}" here...`}
+                autoFocus
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 text-xs font-semibold focus:outline-none focus:border-red-500 resize-none"
+              />
+            </div>
+
             <div className="flex items-center justify-end gap-2.5 pt-2">
               <button
                 type="button"
-                onClick={() => setDeletingCol(null)}
+                onClick={() => {
+                  setDeletingCol(null);
+                  setDeleteConfirmText('');
+                }}
                 className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
+                disabled={deleteConfirmText.trim() !== deletingCol.label.trim()}
                 onClick={handleConfirmDeleteColumn}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-xs cursor-pointer"
               >
                 Delete Column
               </button>
