@@ -113,6 +113,29 @@ interface VehicleMeta {
   capacity: string;
 }
 
+interface PendingCellEdit {
+  row: Record<string, any>;
+  col: SheetColumnDef;
+  originalValue: string;
+  newValue: string;
+  canUpdateSourceInvoice: boolean;
+  sourceLabel: string;
+  validationError: string | null;
+}
+
+const DIRECT_INVOICE_TRIP_FIELDS = new Set([
+  'date',
+  'driverName',
+  'dcNo',
+  'toPlace',
+  'particulars',
+  'quantity',
+  'openingKm',
+  'closingKm',
+  'freightPerKm',
+  'tollGateExp',
+]);
+
 export function MasterTripSheetManager() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -171,9 +194,12 @@ export function MasterTripSheetManager() {
     return () => document.removeEventListener('mousedown', onOutside);
   }, [headerMoreOpen]);
 
-  // Inline cell editing
+  // Inline cell editing (gated behind Manual Edit toggle + cross-verification)
+  const [manualEditEnabled, setManualEditEnabled] = useState(false);
+  const [editHintBanner, setEditHintBanner] = useState('');
   const [editingCell, setEditingCell] = useState<{ rowKey: string; colKey: string } | null>(null);
   const [editingCellVal, setEditingCellVal] = useState('');
+  const [pendingEdit, setPendingEdit] = useState<PendingCellEdit | null>(null);
   const [savingCell, setSavingCell] = useState(false);
 
   const applyPeriod = useCallback((preset: PeriodPreset) => {
@@ -753,6 +779,8 @@ export function MasterTripSheetManager() {
 
       const row: Record<string, any> = {
         rowKey,
+        __billId: bill.id,
+        __tripIndex: tripIndex,
         billNumber: bill.billNumber,
         timestamp,
         monthKey: parsedMonth?.key || 'unknown',
@@ -808,6 +836,8 @@ export function MasterTripSheetManager() {
           'expense.paymentMode': eMeta ? Array.from(eMeta.modes).join(', ') : '',
         } as Record<string, string | number>,
       };
+
+      row.__rawDbRow = { ...row };
 
       const overrides = cellValues[rowKey];
       if (overrides) {
@@ -917,6 +947,8 @@ export function MasterTripSheetManager() {
           'expense.paymentMode': eMeta ? Array.from(eMeta.modes).join(', ') : '',
         } as Record<string, string | number>,
       };
+
+      extraRow.__rawDbRow = { ...extraRow };
 
       const overrides = cellValues[rowKey];
       if (overrides) {
@@ -1235,16 +1267,167 @@ export function MasterTripSheetManager() {
     }
   };
 
-  // Save inline cell edit to Supabase DB
-  const handleSaveCellEdit = async (rowKey: string, colKey: string) => {
+  const getColumnSourceLabel = (col: SheetColumnDef): string => {
+    const k = col.column_key;
+    if (['date', 'vehicleNumber', 'driverName', 'dcNo', 'fromPlace', 'toPlace', 'particulars', 'quantity', 'openingKm', 'closingKm', 'freightPerKm', 'tollGateExp'].includes(k)) {
+      return 'Invoices (Section 1 / 2)';
+    }
+    if (['fuelParticulars', 'dieselQty', 'dieselRate', 'dieselAmount', 'mileage'].includes(k)) {
+      return 'Fuel Category';
+    }
+    if (k === 'maintenanceExp') return 'Repair & Maintenance Category';
+    if (k === 'expensesTotal') return 'Expenses Category';
+    if (k === 'driverSalary') return 'Drivers Category';
+    if (['runningKm', 'totalExpenses', 'freightAmount', 'billAmount', 'profit', 'loss'].includes(k)) {
+      return 'Auto-Calculated Row Total';
+    }
+    return 'Master Trip Sheet (Custom Column)';
+  };
+
+  // Cross-verify entered value and open confirmation warning modal before saving
+  const requestCellEditConfirmation = (row: Record<string, any>, col: SheetColumnDef) => {
+    const trimmed = editingCellVal.trim();
+    const rawVal = row.__rawDbRow?.[col.column_key] ?? '';
+    const originalValue = String(rawVal);
+    const currentDisplayVal = String(row[col.column_key] ?? '');
+    const hasExistingOverride = cellValues[row.rowKey]?.[col.column_key] !== undefined;
+
+    if (trimmed === currentDisplayVal && !hasExistingOverride) {
+      setEditingCell(null);
+      return;
+    }
+
+    let validationError: string | null = null;
+    if (col.data_type === 'number' || col.data_type === 'currency') {
+      if (trimmed === '') {
+        validationError = `Please enter a valid ${col.data_type === 'currency' ? 'amount' : 'number'} for "${col.label}".`;
+      } else {
+        const parsed = Number(trimmed);
+        if (!isFinite(parsed) || isNaN(parsed)) {
+          validationError = `"${trimmed}" is not a valid number for "${col.label}".`;
+        } else if (parsed < 0 && col.column_key !== 'profit' && col.column_key !== 'loss') {
+          validationError = `"${col.label}" cannot be negative.`;
+        }
+      }
+    }
+
+    const canUpdateSourceInvoice = Boolean(
+      row.__billId &&
+      row.__tripIndex !== undefined &&
+      DIRECT_INVOICE_TRIP_FIELDS.has(col.column_key)
+    );
+
+    setPendingEdit({
+      row,
+      col,
+      originalValue,
+      newValue: trimmed,
+      canUpdateSourceInvoice,
+      sourceLabel: getColumnSourceLabel(col),
+      validationError,
+    });
+    setEditingCell(null);
+  };
+
+  // Execute confirmed edit: sheet-only override, update both Sheet & Invoice DB, or revert
+  const confirmSaveCellEdit = async (mode: 'sheet_only' | 'both' | 'revert') => {
+    if (!pendingEdit) return;
+    const { row, col, newValue } = pendingEdit;
+    const rowKey = row.rowKey;
+    const colKey = col.column_key;
+
     setSavingCell(true);
     try {
       const supabase = createClient();
+
+      if (mode === 'revert') {
+        await supabase
+          .from('trip_sheet_cell_values')
+          .delete()
+          .eq('row_key', rowKey)
+          .eq('column_key', colKey);
+
+        setCellValues((prev) => {
+          const next = { ...prev };
+          if (next[rowKey]) {
+            const rowCopy = { ...next[rowKey] };
+            delete rowCopy[colKey];
+            next[rowKey] = rowCopy;
+          }
+          return next;
+        });
+        setPendingEdit(null);
+        return;
+      }
+
+      if (mode === 'both' && row.__billId && row.__tripIndex !== undefined) {
+        const targetBill = bills.find((b) => b.id === row.__billId);
+        if (targetBill) {
+          const updatedTrips = [...(targetBill.trips || [])];
+          const tripIdx = Number(row.__tripIndex);
+          const targetTrip = { ...(updatedTrips[tripIdx] || {}) } as any;
+
+          if (colKey === 'date') targetTrip.date = newValue;
+          else if (colKey === 'driverName') targetTrip.driverName = newValue;
+          else if (colKey === 'dcNo') targetTrip.dcNo = newValue;
+          else if (colKey === 'toPlace') targetTrip.route = newValue;
+          else if (colKey === 'particulars') {
+            targetTrip.itemName = newValue;
+            targetTrip.particulars = newValue;
+          } else if (colKey === 'quantity') targetTrip.itemQuantity = Number(newValue) || newValue;
+          else if (colKey === 'openingKm') targetTrip.startingKm = Number(newValue) || 0;
+          else if (colKey === 'closingKm') targetTrip.closingKm = Number(newValue) || 0;
+          else if (colKey === 'freightPerKm') targetTrip.rate = Number(newValue) || 0;
+          else if (colKey === 'tollGateExp') {
+            const tollNum = Number(newValue) || 0;
+            targetTrip.tollAmount = tollNum;
+            targetTrip.tollEnabled = tollNum > 0;
+          }
+
+          updatedTrips[tripIdx] = targetTrip;
+
+          const { data: invData } = await supabase
+            .from('invoices')
+            .select('raw_data')
+            .eq('id', row.__billId)
+            .single();
+
+          const updatedRawData = invData?.raw_data
+            ? { ...invData.raw_data, trips: updatedTrips }
+            : undefined;
+
+          const updatePayload: Record<string, any> = { trips: updatedTrips };
+          if (updatedRawData) updatePayload.raw_data = updatedRawData;
+
+          const { error: invErr } = await supabase
+            .from('invoices')
+            .update(updatePayload)
+            .eq('id', row.__billId);
+
+          if (invErr) {
+            setDbError(`Failed to update source invoice: ${invErr.message}`);
+            return;
+          }
+
+          // Clear any stale sheet-only override so both stay synced
+          await supabase
+            .from('trip_sheet_cell_values')
+            .delete()
+            .eq('row_key', rowKey)
+            .eq('column_key', colKey);
+
+          setPendingEdit(null);
+          await fetchAllFromSupabase();
+          return;
+        }
+      }
+
+      // Default: 'sheet_only' override
       const { error } = await supabase.from('trip_sheet_cell_values').upsert(
         {
           row_key: rowKey,
           column_key: colKey,
-          value: editingCellVal,
+          value: newValue,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'row_key,column_key' }
@@ -1255,15 +1438,15 @@ export function MasterTripSheetManager() {
           ...prev,
           [rowKey]: {
             ...(prev[rowKey] || {}),
-            [colKey]: editingCellVal,
+            [colKey]: newValue,
           },
         }));
       }
-    } catch (err) {
-      console.error('Error saving cell value:', err);
+      setPendingEdit(null);
+    } catch (err: any) {
+      setDbError(err?.message || 'Error saving cell value.');
     } finally {
       setSavingCell(false);
-      setEditingCell(null);
     }
   };
 
@@ -1353,6 +1536,24 @@ export function MasterTripSheetManager() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setManualEditEnabled((prev) => !prev);
+              setEditingCell(null);
+              setEditHintBanner('');
+            }}
+            title={manualEditEnabled ? 'Turn off Manual Edit mode' : 'Turn on Manual Edit mode to edit cells'}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+              manualEditEnabled
+                ? 'bg-amber-500 hover:bg-amber-600 border-amber-600 text-white shadow-xs'
+                : 'border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <PenLine className="w-3.5 h-3.5" />
+            <span>Manual Edit: {manualEditEnabled ? 'ON' : 'OFF'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -1574,6 +1775,37 @@ export function MasterTripSheetManager() {
         )}
       </div>
 
+      {manualEditEnabled && (
+        <div className="px-3.5 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs flex flex-wrap items-center justify-between gap-2 no-print">
+          <span className="font-semibold">
+            Manual Edit Mode is ON: Double-click an editable cell to modify. Every edit is cross-verified and asks whether to update only here or the source database.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setManualEditEnabled(false);
+              setEditingCell(null);
+            }}
+            className="text-xs font-bold underline cursor-pointer"
+          >
+            Turn Off
+          </button>
+        </div>
+      )}
+
+      {!manualEditEnabled && editHintBanner && (
+        <div className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300 text-xs flex items-center justify-between gap-2 no-print">
+          <span className="font-semibold">{editHintBanner}</span>
+          <button
+            type="button"
+            onClick={() => setEditHintBanner('')}
+            className="text-gray-500 hover:text-gray-700 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Excel-Style Spreadsheet Table */}
       <div className="bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-800 rounded-2xl shadow-xs overflow-hidden">
         {loading ? (
@@ -1707,11 +1939,19 @@ export function MasterTripSheetManager() {
                           const isProfit = col.column_key === 'profit' && Number(row.profit) > 0;
                           const isLoss = col.column_key === 'loss' && Number(row.loss) > 0;
 
+                          const isModifiedHere =
+                            col.is_default &&
+                            cellValues[row.rowKey]?.[col.column_key] !== undefined;
+
                           return (
                             <td
                               key={col.column_key}
                               onDoubleClick={() => {
                                 if (isComputedCol) return;
+                                if (!manualEditEnabled) {
+                                  setEditHintBanner('Manual Edit is OFF. Toggle "Manual Edit" ON in the toolbar to edit cells.');
+                                  return;
+                                }
                                 setEditingCell({ rowKey: row.rowKey, colKey: col.column_key });
                                 setEditingCellVal(String(row[col.column_key] ?? ''));
                               }}
@@ -1720,10 +1960,16 @@ export function MasterTripSheetManager() {
                                   ? `Auto-linked from database (${meta.dbField})`
                                   : meta?.sourceType === 'formula'
                                   ? `Auto-calculated (${meta.formula})`
-                                  : 'Double-click to edit cell value'
+                                  : manualEditEnabled
+                                  ? 'Double-click to edit cell value'
+                                  : 'Turn on Manual Edit mode to edit'
                               }
                               className={`border-r border-gray-200 dark:border-zinc-800 py-2 px-3 whitespace-nowrap ${
-                                isComputedCol ? 'cursor-default' : 'cursor-cell'
+                                isComputedCol
+                                  ? 'cursor-default'
+                                  : manualEditEnabled
+                                  ? 'cursor-cell'
+                                  : 'cursor-default'
                               } ${
                                 isNumeric ? 'text-right font-mono' : 'text-left'
                               } ${
@@ -1731,6 +1977,8 @@ export function MasterTripSheetManager() {
                                   ? 'text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50/40 dark:bg-emerald-950/20'
                                   : isLoss
                                   ? 'text-red-600 dark:text-red-400 font-bold bg-red-50/40 dark:bg-red-950/20'
+                                  : isModifiedHere
+                                  ? 'bg-amber-50/60 dark:bg-amber-950/20 text-gray-900 dark:text-zinc-100'
                                   : 'text-gray-800 dark:text-zinc-200'
                               }`}
                             >
@@ -1743,7 +1991,7 @@ export function MasterTripSheetManager() {
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter') {
                                         e.preventDefault();
-                                        handleSaveCellEdit(row.rowKey, col.column_key);
+                                        requestCellEditConfirmation(row, col);
                                       } else if (e.key === 'Escape') {
                                         setEditingCell(null);
                                       }
@@ -1754,30 +2002,44 @@ export function MasterTripSheetManager() {
                                   <button
                                     type="button"
                                     disabled={savingCell}
-                                    onClick={() => handleSaveCellEdit(row.rowKey, col.column_key)}
+                                    onClick={() => requestCellEditConfirmation(row, col)}
                                     className="p-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shrink-0"
                                   >
                                     <Check className="w-3 h-3" />
                                   </button>
                                 </div>
                               ) : col.column_key === 'expensesTotal' ? (
-                                <div className="flex flex-wrap items-center justify-end gap-1 max-w-[320px]">
-                                  {Array.isArray(row.expensePills) && row.expensePills.length > 0 ? (
-                                    row.expensePills.map((pill: ExpensePillItem) => (
-                                      <span
-                                        key={pill.category}
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/60"
-                                      >
-                                        <span className="truncate max-w-[140px] font-sans">{pill.category}:</span>
-                                        <span className="font-mono font-bold">Rs.{pill.amount.toLocaleString('en-IN')}</span>
-                                      </span>
-                                    ))
-                                  ) : (
-                                    <span className="text-gray-400 dark:text-zinc-500">Rs.0</span>
+                                <div>
+                                  <div className="flex flex-wrap items-center justify-end gap-1 max-w-[320px]">
+                                    {Array.isArray(row.expensePills) && row.expensePills.length > 0 ? (
+                                      row.expensePills.map((pill: ExpensePillItem) => (
+                                        <span
+                                          key={pill.category}
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/60"
+                                        >
+                                          <span className="truncate max-w-[140px] font-sans">{pill.category}:</span>
+                                          <span className="font-mono font-bold">Rs.{pill.amount.toLocaleString('en-IN')}</span>
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="text-gray-400 dark:text-zinc-500">Rs.0</span>
+                                    )}
+                                  </div>
+                                  {isModifiedHere && (
+                                    <span className="block text-[9px] font-sans font-semibold text-amber-600 dark:text-amber-400 leading-tight mt-0.5">
+                                      Modified here
+                                    </span>
                                   )}
                                 </div>
                               ) : (
-                                <span>{formatCellDisplay(row, col)}</span>
+                                <div>
+                                  <span>{formatCellDisplay(row, col)}</span>
+                                  {isModifiedHere && (
+                                    <span className="block text-[9px] font-sans font-semibold text-amber-600 dark:text-amber-400 leading-tight">
+                                      Modified here
+                                    </span>
+                                  )}
+                                </div>
                               )}
                             </td>
                           );
@@ -2174,6 +2436,111 @@ export function MasterTripSheetManager() {
               >
                 Delete Column
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CROSS-VERIFY & CONFIRM MANUAL CELL EDIT MODAL */}
+      {pendingEdit && (
+        <div
+          className="fixed inset-0 !m-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => !savingCell && setPendingEdit(null)}
+        >
+          <div
+            className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-md w-full shadow-2xl p-5 sm:p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-gray-900 dark:text-white truncate">
+                  Verify Manual Edit: {pendingEdit.col.label}
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-zinc-400 truncate">
+                  {pendingEdit.row.date || 'No date'} &middot; {pendingEdit.row.vehicleNumber || 'General'} &middot; {pendingEdit.sourceLabel}
+                </p>
+              </div>
+            </div>
+
+            {/* Cross-verification comparison */}
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
+              <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-zinc-800/70 border border-gray-200 dark:border-zinc-700">
+                <span className="text-[10px] font-bold uppercase text-gray-400 dark:text-zinc-500 block">
+                  Original DB Value
+                </span>
+                <span className="font-mono font-bold text-gray-800 dark:text-zinc-200 break-all">
+                  {pendingEdit.originalValue || '-'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800">
+                <span className="text-[10px] font-bold uppercase text-blue-600 dark:text-blue-400 block">
+                  New Entered Value
+                </span>
+                <span className="font-mono font-bold text-blue-900 dark:text-blue-200 break-all">
+                  {pendingEdit.newValue || '-'}
+                </span>
+              </div>
+            </div>
+
+            {pendingEdit.validationError ? (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-xs font-semibold text-red-700 dark:text-red-300">
+                Cross-verification failed: {pendingEdit.validationError}
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                <p className="font-bold">Warning before saving:</p>
+                {pendingEdit.canUpdateSourceInvoice ? (
+                  <p>
+                    This value is linked to <strong>Invoices</strong>. You can either save it <strong>only in Master Trip Sheet</strong> (shown as &quot;Modified here&quot;) or <strong>update both</strong> Master Trip Sheet and the Invoice record in Supabase.
+                  </p>
+                ) : (
+                  <p>
+                    This value is sourced from <strong>{pendingEdit.sourceLabel}</strong>. Editing here saves an override <strong>only in Master Trip Sheet</strong> (shown as &quot;Modified here&quot;) and does not alter the source category.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-zinc-800">
+              {cellValues[pendingEdit.row.rowKey]?.[pendingEdit.col.column_key] !== undefined && (
+                <button
+                  type="button"
+                  disabled={savingCell}
+                  onClick={() => confirmSaveCellEdit('revert')}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer mr-auto"
+                >
+                  Revert to DB
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={savingCell}
+                onClick={() => setPendingEdit(null)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={savingCell || Boolean(pendingEdit.validationError)}
+                onClick={() => confirmSaveCellEdit('sheet_only')}
+                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white text-xs font-bold shadow-xs cursor-pointer"
+              >
+                {savingCell ? 'Saving...' : 'Edit Only Here'}
+              </button>
+              {pendingEdit.canUpdateSourceInvoice && !pendingEdit.validationError && (
+                <button
+                  type="button"
+                  disabled={savingCell}
+                  onClick={() => confirmSaveCellEdit('both')}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold shadow-xs cursor-pointer"
+                >
+                  {savingCell ? 'Updating...' : 'Update Here & Invoice DB'}
+                </button>
+              )}
             </div>
           </div>
         </div>
