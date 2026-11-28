@@ -18,11 +18,12 @@ import {
   Check,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { BillData, getBillTdsRate } from '@/lib/invoices';
-import { FuelEntry } from '@/lib/fuel';
-import { MaintenanceEntry } from '@/lib/maintenance';
-import { ExpenseEntry, isTollExpense } from '@/lib/expenses';
-import { Driver } from '@/lib/drivers';
+import { BillData, getBillTdsRate, getStoredInvoices } from '@/lib/invoices';
+import { FuelEntry, getStoredFuelEntries } from '@/lib/fuel';
+import { MaintenanceEntry, getStoredMaintenanceEntries } from '@/lib/maintenance';
+import { ExpenseEntry, isTollExpense, getStoredExpenses } from '@/lib/expenses';
+import { Driver, getStoredDrivers } from '@/lib/drivers';
+import { getStoredVehicles } from '@/lib/vehicles';
 import { isDateInRange, parseDateToTimestamp } from '@/lib/profitAndLoss';
 import { CustomDatePicker } from './CustomDatePicker';
 import { EditableSelectDropdown } from './EditableSelectDropdown';
@@ -163,12 +164,17 @@ export function MasterTripSheetManager() {
         supabase.from('trip_sheet_cell_values').select('*'),
       ]);
 
+      const vehSet = new Set<string>();
+
       if (!vRes.error && vRes.data) {
-        setVehiclesList(
-          vRes.data
-            .map((v: any) => (v.registration_number || '').trim().toUpperCase())
-            .filter(Boolean)
-        );
+        vRes.data.forEach((v: any) => {
+          const reg = (v.registration_number || '').trim().toUpperCase();
+          if (reg) vehSet.add(reg);
+        });
+      } else {
+        getStoredVehicles().forEach((v) => {
+          if (v.registrationNumber) vehSet.add(v.registrationNumber.trim().toUpperCase());
+        });
       }
 
       if (!iRes.error && iRes.data) {
@@ -177,13 +183,24 @@ export function MasterTripSheetManager() {
             item.consignor?.address ||
             item.raw_data?.branch ||
             'Nellakottai Hatcheries, Dindugul DT. TN.';
-          if (item.raw_data && item.raw_data.trips) {
+          if (item.vehicle_number) vehSet.add(String(item.vehicle_number).trim().toUpperCase());
+
+          const rawTrips =
+            item.raw_data && Array.isArray(item.raw_data.trips) && item.raw_data.trips.length > 0
+              ? item.raw_data.trips
+              : Array.isArray(item.trips)
+              ? item.trips
+              : [];
+
+          if (item.raw_data) {
             return {
               ...item.raw_data,
               id: item.id,
               billNumber: item.bill_number,
               date: item.bill_date,
               vehicleNumber: item.vehicle_number,
+              trips: rawTrips,
+              visibleTrips: item.raw_data.visibleTrips ?? rawTrips.length,
               status: item.payment_status || item.raw_data.status || 'unpaid',
               consignorAddress: consignorAddr,
             };
@@ -194,8 +211,8 @@ export function MasterTripSheetManager() {
             date: item.bill_date,
             vehicleNumber: item.vehicle_number,
             activeTrip: 1,
-            visibleTrips: (item.trips || []).length || 1,
-            trips: item.trips || [],
+            visibleTrips: rawTrips.length || 1,
+            trips: rawTrips,
             keralaRtoEnabled: item.expenses?.hasRto ?? false,
             keralaRtoMultiplier: item.expenses?.rtoMultiplier ?? 0,
             keralaRtoAmount: item.expenses?.rtoExpense ?? 0,
@@ -207,54 +224,74 @@ export function MasterTripSheetManager() {
           };
         });
         setBills(mappedBills);
+      } else {
+        setBills(getStoredInvoices());
       }
 
       if (!fRes.error && fRes.data) {
         setFuelEntries(
-          fRes.data.map((f: any) => ({
-            id: f.id,
-            vehicleNumber: (f.vehicle_number || '').trim().toUpperCase(),
-            date: f.entry_date || '',
-            billNumber: f.bill_number || '',
-            particulars: f.fuel_type || 'Diesel',
-            liters: Number(f.liters) || 0,
-            ratePerLiter: Number(f.rate_per_liter) || 0,
-            totalAmount: Number(f.total_amount) || 0,
-            bunkName: f.bunk_name || '',
-          }))
+          fRes.data.map((f: any) => {
+            const v = (f.vehicle_number || '').trim().toUpperCase();
+            if (v) vehSet.add(v);
+            return {
+              id: f.id,
+              vehicleNumber: v,
+              date: f.entry_date || '',
+              billNumber: f.bill_number || '',
+              particulars: f.fuel_type || 'Diesel',
+              liters: Number(f.liters) || 0,
+              ratePerLiter: Number(f.rate_per_liter) || 0,
+              totalAmount: Number(f.total_amount) || 0,
+              bunkName: f.bunk_name || '',
+            };
+          })
         );
+      } else {
+        setFuelEntries(getStoredFuelEntries());
       }
 
       if (!mRes.error && mRes.data) {
         setMaintenanceEntries(
-          mRes.data.map((m: any) => ({
-            id: m.id,
-            vehicleNumber: (m.vehicle_number || '').trim().toUpperCase(),
-            date: m.entry_date || '',
-            billNumber: m.bill_number || '',
-            category: m.category || '',
-            description: m.description || '',
-            amount: Number(m.amount) || 0,
-            workshopName: m.workshop_name || '',
-            odometerKm: m.odometer_km ? Number(m.odometer_km) : undefined,
-          }))
+          mRes.data.map((m: any) => {
+            const v = (m.vehicle_number || '').trim().toUpperCase();
+            if (v) vehSet.add(v);
+            return {
+              id: m.id,
+              vehicleNumber: v,
+              date: m.entry_date || '',
+              billNumber: m.bill_number || '',
+              category: m.category || '',
+              description: m.description || '',
+              amount: Number(m.amount) || 0,
+              workshopName: m.workshop_name || '',
+              odometerKm: m.odometer_km ? Number(m.odometer_km) : undefined,
+            };
+          })
         );
+      } else {
+        setMaintenanceEntries(getStoredMaintenanceEntries());
       }
 
       if (!eRes.error && eRes.data) {
         setExpenses(
-          eRes.data.map((e: any) => ({
-            id: e.id,
-            vehicleNumber: (e.vehicle_number || 'GENERAL').trim().toUpperCase(),
-            date: e.entry_date || '',
-            voucherNumber: e.voucher_number || '',
-            category: e.category || '',
-            description: e.description || '',
-            amount: Number(e.amount) || 0,
-            paymentMode: e.payment_mode || 'Cash',
-            paidTo: e.paid_to || '',
-          }))
+          eRes.data.map((e: any) => {
+            const v = (e.vehicle_number || 'GENERAL').trim().toUpperCase();
+            if (v) vehSet.add(v);
+            return {
+              id: e.id,
+              vehicleNumber: v,
+              date: e.entry_date || '',
+              voucherNumber: e.voucher_number || '',
+              category: e.category || '',
+              description: e.description || '',
+              amount: Number(e.amount) || 0,
+              paymentMode: e.payment_mode || 'Cash',
+              paidTo: e.paid_to || '',
+            };
+          })
         );
+      } else {
+        setExpenses(getStoredExpenses());
       }
 
       if (!dRes.error && dRes.data) {
@@ -268,7 +305,11 @@ export function MasterTripSheetManager() {
             status: d.status || 'active',
           }))
         );
+      } else {
+        setDrivers(getStoredDrivers());
       }
+
+      setVehiclesList(Array.from(vehSet).sort());
 
       // Columns from Supabase
       if (colRes.error) {
@@ -352,9 +393,16 @@ export function MasterTripSheetManager() {
     }
 
     // Index fuel, maintenance, and expenses by (normalizedVehicle + normalizedDateKey)
+    const displayVehMap = new Map<string, string>();
+    const displayDateMap = new Map<string, string>();
+
     const fuelByKey = new Map<string, { liters: number; amount: number }>();
     for (const f of fuelEntries) {
-      const k = `${normalizeVeh(f.vehicleNumber)}|${normalizeDateKey(f.date)}`;
+      const vKey = normalizeVeh(f.vehicleNumber);
+      const dKey = normalizeDateKey(f.date);
+      const k = `${vKey}|${dKey}`;
+      if (f.vehicleNumber && !displayVehMap.has(vKey)) displayVehMap.set(vKey, f.vehicleNumber.trim().toUpperCase());
+      if (f.date && !displayDateMap.has(dKey)) displayDateMap.set(dKey, f.date.trim());
       const prev = fuelByKey.get(k) || { liters: 0, amount: 0 };
       prev.liters += Number(f.liters) || 0;
       prev.amount += Number(f.totalAmount) || 0;
@@ -363,7 +411,11 @@ export function MasterTripSheetManager() {
 
     const maintByKey = new Map<string, number>();
     for (const m of maintenanceEntries) {
-      const k = `${normalizeVeh(m.vehicleNumber)}|${normalizeDateKey(m.date)}`;
+      const vKey = normalizeVeh(m.vehicleNumber);
+      const dKey = normalizeDateKey(m.date);
+      const k = `${vKey}|${dKey}`;
+      if (m.vehicleNumber && !displayVehMap.has(vKey)) displayVehMap.set(vKey, m.vehicleNumber.trim().toUpperCase());
+      if (m.date && !displayDateMap.has(dKey)) displayDateMap.set(dKey, m.date.trim());
       maintByKey.set(k, (maintByKey.get(k) || 0) + (Number(m.amount) || 0));
     }
 
@@ -372,7 +424,11 @@ export function MasterTripSheetManager() {
       { driverFood: number; rto: number; toll: number; other: number }
     >();
     for (const exp of expenses) {
-      const k = `${normalizeVeh(exp.vehicleNumber)}|${normalizeDateKey(exp.date)}`;
+      const vKey = normalizeVeh(exp.vehicleNumber);
+      const dKey = normalizeDateKey(exp.date);
+      const k = `${vKey}|${dKey}`;
+      if (exp.vehicleNumber && !displayVehMap.has(vKey)) displayVehMap.set(vKey, exp.vehicleNumber.trim().toUpperCase());
+      if (exp.date && !displayDateMap.has(dKey)) displayDateMap.set(dKey, exp.date.trim());
       const bucket = expByKey.get(k) || { driverFood: 0, rto: 0, toll: 0, other: 0 };
       const amt = Number(exp.amount) || 0;
       const cat = (exp.category || '').toLowerCase();
@@ -401,6 +457,9 @@ export function MasterTripSheetManager() {
       }
       expByKey.set(k, bucket);
     }
+
+    // Track which (vehicle|date) keys were matched to at least one invoice trip
+    const matchedKeys = new Set<string>();
 
     // Calculate total running KM per (vehicle + date) across all trips to split same-day fuel/expense proportionally
     const totalKmByKey = new Map<string, number>();
@@ -447,6 +506,7 @@ export function MasterTripSheetManager() {
     const rows = rawTrips.map((item) => {
       const { bill, trip, tripIndex, tripDate, dateKey, vehKey, runningKm } = item;
       const key = `${vehKey}|${dateKey}`;
+      matchedKeys.add(key);
       const groupKm = totalKmByKey.get(key) || 0;
       const groupCount = tripCountByKey.get(key) || 1;
       const share = groupKm > 0 ? runningKm / groupKm : 1 / groupCount;
@@ -522,9 +582,12 @@ export function MasterTripSheetManager() {
         driverName: (trip.driverName || '').trim(),
         dcNo: String(trip.dcNo || '').trim(),
         fromPlace,
-        toPlace: (trip.route || '').trim(),
-        particulars: (trip.itemName || trip.particulars || '').trim(),
-        quantity: trip.itemQuantity ? Number(trip.itemQuantity) || trip.itemQuantity : '',
+        toPlace: (trip.route || (trip as any).places?.join(', ') || '').trim(),
+        particulars: (trip.itemName || trip.particulars || (trip as any).itemType || '').trim(),
+        quantity:
+          trip.itemQuantity || (trip as any).quantity
+            ? Number(trip.itemQuantity || (trip as any).quantity) || (trip.itemQuantity || (trip as any).quantity)
+            : '',
         openingKm: Number(trip.startingKm) || 0,
         closingKm: Number(trip.closingKm) || 0,
         runningKm,
@@ -556,6 +619,78 @@ export function MasterTripSheetManager() {
 
       return row;
     });
+
+    // Include unmatched Fuel, Maintenance, and Expense entries (days without an invoice trip or GENERAL account)
+    const extraKeys = new Set<string>([
+      ...fuelByKey.keys(),
+      ...maintByKey.keys(),
+      ...expByKey.keys(),
+    ]);
+
+    for (const extraKey of extraKeys) {
+      if (matchedKeys.has(extraKey)) continue;
+      const [vKey, dKey] = extraKey.split('|');
+      const fuelGroup = fuelByKey.get(extraKey);
+      const maintCost = Math.round(maintByKey.get(extraKey) || 0);
+      const expGroup = expByKey.get(extraKey);
+
+      const dieselQty = fuelGroup ? Math.round(fuelGroup.liters * 100) / 100 : 0;
+      const dieselAmount = fuelGroup ? Math.round(fuelGroup.amount) : 0;
+      const dieselRate = dieselQty > 0 ? Math.round((dieselAmount / dieselQty) * 100) / 100 : 0;
+      const driverFoodExp = expGroup ? Math.round(expGroup.driverFood) : 0;
+      const rtoExp = expGroup ? Math.round(expGroup.rto) : 0;
+      const tollGateExp = expGroup ? Math.round(expGroup.toll) : 0;
+      const otherExp = expGroup ? Math.round(expGroup.other) : 0;
+      const totalExpenses = dieselAmount + driverFoodExp + rtoExp + maintCost + tollGateExp + otherExp;
+
+      if (totalExpenses === 0 && dieselQty === 0) continue;
+
+      const dateDisplay = displayDateMap.get(dKey) || dKey;
+      const vehDisplay = displayVehMap.get(vKey) || vKey || 'GENERAL';
+      const rowKey = `extra_${vKey}_${dKey}`;
+
+      const extraRow: Record<string, any> = {
+        rowKey,
+        billNumber: 0,
+        timestamp: parseDateToTimestamp(dateDisplay),
+        date: dateDisplay,
+        vehicleNumber: vehDisplay,
+        driverName: '',
+        dcNo: '',
+        fromPlace: '',
+        toPlace: '',
+        particulars: 'Non-Trip Fuel / Expense Entry',
+        quantity: '',
+        openingKm: 0,
+        closingKm: 0,
+        runningKm: 0,
+        dieselQty,
+        dieselRate,
+        dieselAmount,
+        mileage: 0,
+        driverFoodExp,
+        rtoExp,
+        maintenanceExp: maintCost,
+        tollGateExp,
+        otherExp,
+        driverSalary: 0,
+        totalExpenses,
+        freightPerKm: 0,
+        freightAmount: 0,
+        billAmount: 0,
+        profit: 0,
+        loss: totalExpenses,
+      };
+
+      const overrides = cellValues[rowKey];
+      if (overrides) {
+        for (const [cKey, cVal] of Object.entries(overrides)) {
+          extraRow[cKey] = cVal;
+        }
+      }
+
+      rows.push(extraRow);
+    }
 
     rows.sort((a, b) => {
       if (b.timestamp !== a.timestamp) return b.timestamp - a.timestamp;
@@ -1379,3 +1514,4 @@ export function MasterTripSheetManager() {
     </div>
   );
 }
+
