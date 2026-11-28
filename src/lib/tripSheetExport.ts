@@ -44,7 +44,7 @@ export async function exportMasterTripSheetToExcel({
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet('Master Trip Sheet', {
-    views: [{ state: 'frozen', xSplit: 1, ySplit: 3 }],
+    views: [{ state: 'frozen', ySplit: 3 }],
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
   });
 
