@@ -18,10 +18,10 @@ import {
   Check,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { BillData, getBillTdsRate } from '@/lib/invoices';
+import { BillData, parseMonthFromDate } from '@/lib/invoices';
 import { FuelEntry } from '@/lib/fuel';
 import { MaintenanceEntry } from '@/lib/maintenance';
-import { ExpenseEntry, isTollExpense } from '@/lib/expenses';
+import { ExpenseEntry } from '@/lib/expenses';
 import { Driver } from '@/lib/drivers';
 import { isDateInRange, parseDateToTimestamp } from '@/lib/profitAndLoss';
 import { CustomDatePicker } from './CustomDatePicker';
@@ -49,22 +49,21 @@ const DEFAULT_SHEET_COLUMNS: SheetColumnDef[] = [
   { column_key: 'openingKm', label: 'Opening KM', data_type: 'number', sort_order: 9, is_default: true },
   { column_key: 'closingKm', label: 'Closing KM', data_type: 'number', sort_order: 10, is_default: true },
   { column_key: 'runningKm', label: 'Running KM', data_type: 'number', sort_order: 11, is_default: true },
-  { column_key: 'dieselQty', label: 'Diesel Qty (L)', data_type: 'number', sort_order: 12, is_default: true },
-  { column_key: 'dieselRate', label: 'Rate', data_type: 'currency', sort_order: 13, is_default: true },
-  { column_key: 'dieselAmount', label: 'Diesel Amount', data_type: 'currency', sort_order: 14, is_default: true },
-  { column_key: 'mileage', label: 'Mileage', data_type: 'number', sort_order: 15, is_default: true },
-  { column_key: 'driverFoodExp', label: 'Driver Food Exp', data_type: 'currency', sort_order: 16, is_default: true },
-  { column_key: 'rtoExp', label: 'RTO Expenses', data_type: 'currency', sort_order: 17, is_default: true },
-  { column_key: 'maintenanceExp', label: 'Repairs & Maint. Exp', data_type: 'currency', sort_order: 18, is_default: true },
-  { column_key: 'tollGateExp', label: 'Toll Gate Exp', data_type: 'currency', sort_order: 19, is_default: true },
-  { column_key: 'otherExp', label: 'Expenses', data_type: 'currency', sort_order: 20, is_default: true },
-  { column_key: 'driverSalary', label: 'Driver Salary', data_type: 'currency', sort_order: 21, is_default: true },
-  { column_key: 'totalExpenses', label: 'Total Expenses', data_type: 'currency', sort_order: 22, is_default: true },
-  { column_key: 'freightPerKm', label: 'Freight Per KM', data_type: 'currency', sort_order: 23, is_default: true },
-  { column_key: 'freightAmount', label: 'Freight Amount', data_type: 'currency', sort_order: 24, is_default: true },
-  { column_key: 'billAmount', label: 'Bill Amount', data_type: 'currency', sort_order: 25, is_default: true },
-  { column_key: 'profit', label: 'Profit', data_type: 'currency', sort_order: 26, is_default: true },
-  { column_key: 'loss', label: 'Loss', data_type: 'currency', sort_order: 27, is_default: true },
+  { column_key: 'fuelParticulars', label: 'Fuel Type', data_type: 'text', sort_order: 12, is_default: true },
+  { column_key: 'dieselQty', label: 'Diesel Qty (L)', data_type: 'number', sort_order: 13, is_default: true },
+  { column_key: 'dieselRate', label: 'Rate', data_type: 'currency', sort_order: 14, is_default: true },
+  { column_key: 'dieselAmount', label: 'Diesel Amount', data_type: 'currency', sort_order: 15, is_default: true },
+  { column_key: 'mileage', label: 'Mileage', data_type: 'number', sort_order: 16, is_default: true },
+  { column_key: 'maintenanceExp', label: 'Repairs & Maint.', data_type: 'currency', sort_order: 17, is_default: true },
+  { column_key: 'tollGateExp', label: 'Toll Gate Exp', data_type: 'currency', sort_order: 18, is_default: true },
+  { column_key: 'expensesTotal', label: 'Expenses', data_type: 'currency', sort_order: 19, is_default: true },
+  { column_key: 'driverSalary', label: 'Driver Salary', data_type: 'currency', sort_order: 20, is_default: true },
+  { column_key: 'totalExpenses', label: 'Total Expenses', data_type: 'currency', sort_order: 21, is_default: true },
+  { column_key: 'freightPerKm', label: 'Freight Per KM', data_type: 'currency', sort_order: 22, is_default: true },
+  { column_key: 'freightAmount', label: 'Freight Amount', data_type: 'currency', sort_order: 23, is_default: true },
+  { column_key: 'billAmount', label: 'Bill Amount', data_type: 'currency', sort_order: 24, is_default: true },
+  { column_key: 'profit', label: 'Profit', data_type: 'currency', sort_order: 25, is_default: true },
+  { column_key: 'loss', label: 'Loss', data_type: 'currency', sort_order: 26, is_default: true },
 ];
 
 type PeriodPreset = 'all' | 'month' | '3months' | 'custom';
@@ -85,7 +84,12 @@ function formatDDMMYYYY(d: Date): string {
 }
 
 interface RawInvoiceRecord extends BillData {
-  consignorAddress?: string;
+  consignorFromAddress?: string;
+}
+
+interface ExpensePillItem {
+  category: string;
+  amount: number;
 }
 
 export function MasterTripSheetManager() {
@@ -177,11 +181,13 @@ export function MasterTripSheetManager() {
       if (iRes.error) errors.push(`invoices: ${iRes.error.message}`);
       else if (iRes.data) {
         const mappedBills: RawInvoiceRecord[] = iRes.data.map((item: any) => {
-          const consignorAddr =
-            item.branch ||
-            item.raw_data?.branch ||
+          // Strictly from Section 1 CONSIGNOR (FROM) in DB
+          const consignorFromAddress = (
             item.consignor?.address ||
-            '';
+            item.consignor?.name ||
+            ''
+          ).trim();
+
           if (item.vehicle_number) vehSet.add(String(item.vehicle_number).trim().toUpperCase());
 
           const sqlTrips = Array.isArray(item.trips) ? item.trips : [];
@@ -199,11 +205,10 @@ export function MasterTripSheetManager() {
               billNumber: item.bill_number,
               date: item.bill_date,
               vehicleNumber: item.vehicle_number,
-              branch: item.branch || item.raw_data.branch || '',
               trips: rawTrips,
               visibleTrips: rawTrips.length,
               status: item.payment_status || item.raw_data.status || 'unpaid',
-              consignorAddress: consignorAddr,
+              consignorFromAddress,
             };
           }
           return {
@@ -211,7 +216,6 @@ export function MasterTripSheetManager() {
             billNumber: item.bill_number,
             date: item.bill_date,
             vehicleNumber: item.vehicle_number,
-            branch: item.branch || '',
             activeTrip: 1,
             visibleTrips: rawTrips.length,
             trips: rawTrips,
@@ -222,7 +226,7 @@ export function MasterTripSheetManager() {
             rupeesInWordsMode: 'auto',
             rupeesInWordsText: item.amount_in_words || '',
             status: item.payment_status === 'Paid' ? 'paid' : 'unpaid',
-            consignorAddress: consignorAddr,
+            consignorFromAddress,
           };
         });
         setBills(mappedBills);
@@ -313,7 +317,6 @@ export function MasterTripSheetManager() {
 
       // Columns from Supabase
       if (colRes.error) {
-        // Table not yet created in Supabase
         setSchemaMissing(true);
         setColumns(DEFAULT_SHEET_COLUMNS);
       } else {
@@ -330,7 +333,7 @@ export function MasterTripSheetManager() {
             }))
           );
         } else {
-          // Seed default column definitions into DB (column headers only, zero dummy rows)
+          // Seed default column headers into Supabase (headers only, zero dummy data rows)
           const { data: seeded, error: seedErr } = await supabase
             .from('trip_sheet_columns')
             .upsert(
@@ -392,90 +395,24 @@ export function MasterTripSheetManager() {
       if (d.id) driverRateMap.set(String(d.id), Number(d.ratePerKm) || 0);
     }
 
-    // Index fuel, maintenance, and expenses by (normalizedVehicle + normalizedDateKey)
     const displayVehMap = new Map<string, string>();
     const displayDateMap = new Map<string, string>();
 
-    const fuelByKey = new Map<string, { liters: number; amount: number }>();
-    for (const f of fuelEntries) {
-      const vKey = normalizeVeh(f.vehicleNumber);
-      const dKey = normalizeDateKey(f.date);
-      const k = `${vKey}|${dKey}`;
-      if (f.vehicleNumber && !displayVehMap.has(vKey)) displayVehMap.set(vKey, f.vehicleNumber.trim().toUpperCase());
-      if (f.date && !displayDateMap.has(dKey)) displayDateMap.set(dKey, f.date.trim());
-      const prev = fuelByKey.get(k) || { liters: 0, amount: 0 };
-      prev.liters += Number(f.liters) || 0;
-      prev.amount += Number(f.totalAmount) || 0;
-      fuelByKey.set(k, prev);
-    }
-
-    const maintByKey = new Map<string, number>();
-    for (const m of maintenanceEntries) {
-      const vKey = normalizeVeh(m.vehicleNumber);
-      const dKey = normalizeDateKey(m.date);
-      const k = `${vKey}|${dKey}`;
-      if (m.vehicleNumber && !displayVehMap.has(vKey)) displayVehMap.set(vKey, m.vehicleNumber.trim().toUpperCase());
-      if (m.date && !displayDateMap.has(dKey)) displayDateMap.set(dKey, m.date.trim());
-      maintByKey.set(k, (maintByKey.get(k) || 0) + (Number(m.amount) || 0));
-    }
-
-    const expByKey = new Map<
-      string,
-      { driverFood: number; rto: number; toll: number; other: number }
-    >();
-    for (const exp of expenses) {
-      const vKey = normalizeVeh(exp.vehicleNumber);
-      const dKey = normalizeDateKey(exp.date);
-      const k = `${vKey}|${dKey}`;
-      if (exp.vehicleNumber && !displayVehMap.has(vKey)) displayVehMap.set(vKey, exp.vehicleNumber.trim().toUpperCase());
-      if (exp.date && !displayDateMap.has(dKey)) displayDateMap.set(dKey, exp.date.trim());
-      const bucket = expByKey.get(k) || { driverFood: 0, rto: 0, toll: 0, other: 0 };
-      const amt = Number(exp.amount) || 0;
-      const cat = (exp.category || '').toLowerCase();
-      const desc = (exp.description || '').toLowerCase();
-
-      if (isTollExpense(exp)) {
-        bucket.toll += amt;
-      } else if (
-        cat.includes('driver') ||
-        cat.includes('batta') ||
-        cat.includes('food') ||
-        cat.includes('allowance') ||
-        desc.includes('food') ||
-        desc.includes('batta')
-      ) {
-        bucket.driverFood += amt;
-      } else if (
-        cat.includes('rto') ||
-        cat.includes('checkpost') ||
-        cat.includes('border') ||
-        cat.includes('permit')
-      ) {
-        bucket.rto += amt;
-      } else {
-        bucket.other += amt;
-      }
-      expByKey.set(k, bucket);
-    }
-
-    // Track which (vehicle|date) keys were matched to at least one invoice trip
-    const matchedKeys = new Set<string>();
-
-    // Calculate total running KM per (vehicle + date) across all trips to split same-day fuel/expense proportionally
-    const totalKmByKey = new Map<string, number>();
-    const tripCountByKey = new Map<string, number>();
-
+    // 1. Collect all trips first so we know exact running KM per vehicle & date for fill-to-fill mileage
     interface RawTripItem {
       bill: RawInvoiceRecord;
       trip: RawInvoiceRecord['trips'][number];
       tripIndex: number;
       tripDate: string;
       dateKey: string;
+      timestamp: number;
       vehKey: string;
       runningKm: number;
     }
 
     const rawTrips: RawTripItem[] = [];
+    const totalKmByKey = new Map<string, number>();
+    const tripCountByKey = new Map<string, number>();
 
     for (const bill of bills) {
       const visible = bill.visibleTrips ?? bill.trips?.length ?? 0;
@@ -484,9 +421,17 @@ export function MasterTripSheetManager() {
         if (trip.enabled === false) return;
         const tripDate = (trip.date || bill.date || '').trim();
         const dateKey = normalizeDateKey(tripDate);
+        const ts = parseDateToTimestamp(tripDate);
         const vehKey = normalizeVeh(bill.vehicleNumber);
         const runningKm = Math.max(0, (Number(trip.closingKm) || 0) - (Number(trip.startingKm) || 0));
         const key = `${vehKey}|${dateKey}`;
+
+        if (bill.vehicleNumber && !displayVehMap.has(vehKey)) {
+          displayVehMap.set(vehKey, bill.vehicleNumber.trim().toUpperCase());
+        }
+        if (tripDate && !displayDateMap.has(dateKey)) {
+          displayDateMap.set(dateKey, tripDate);
+        }
 
         totalKmByKey.set(key, (totalKmByKey.get(key) || 0) + runningKm);
         tripCountByKey.set(key, (tripCountByKey.get(key) || 0) + 1);
@@ -497,47 +442,163 @@ export function MasterTripSheetManager() {
           tripIndex: idx,
           tripDate,
           dateKey,
+          timestamp: ts,
           vehKey,
           runningKm,
         });
       });
     }
 
+    // 2. Index fuel entries by (vehKey|dateKey) AND compute fill-to-fill mileage per vehicle
+    // Fill-to-fill mileage: for each fuel fill date on a vehicle, sum trip running KM from previous fill date up to this fill date, divided by this fill's liters.
+    const fuelByKey = new Map<
+      string,
+      { liters: number; amount: number; rate: number; particulars: Set<string>; mileage: number }
+    >();
+
+    const fuelByVehicle = new Map<string, FuelEntry[]>();
+    for (const f of fuelEntries) {
+      const vKey = normalizeVeh(f.vehicleNumber);
+      const dKey = normalizeDateKey(f.date);
+      if (f.vehicleNumber && !displayVehMap.has(vKey)) displayVehMap.set(vKey, f.vehicleNumber.trim().toUpperCase());
+      if (f.date && !displayDateMap.has(dKey)) displayDateMap.set(dKey, f.date.trim());
+
+      const list = fuelByVehicle.get(vKey) || [];
+      list.push(f);
+      fuelByVehicle.set(vKey, list);
+    }
+
+    for (const [vKey, list] of fuelByVehicle.entries()) {
+      // Group same-day fills first, sorted chronologically ascending
+      const dayMap = new Map<string, { ts: number; dateKey: string; liters: number; amount: number; particulars: Set<string> }>();
+      for (const f of list) {
+        const dKey = normalizeDateKey(f.date);
+        const ts = parseDateToTimestamp(f.date);
+        const existing = dayMap.get(dKey) || {
+          ts,
+          dateKey: dKey,
+          liters: 0,
+          amount: 0,
+          particulars: new Set<string>(),
+        };
+        existing.liters += Number(f.liters) || 0;
+        existing.amount += Number(f.totalAmount) || 0;
+        if (f.particulars) existing.particulars.add(f.particulars);
+        dayMap.set(dKey, existing);
+      }
+
+      const sortedFills = Array.from(dayMap.values()).sort((a, b) => a.ts - b.ts);
+      const vehTrips = rawTrips.filter((t) => t.vehKey === vKey);
+
+      for (let i = 0; i < sortedFills.length; i++) {
+        const currFill = sortedFills[i];
+        const prevFill = i > 0 ? sortedFills[i - 1] : null;
+
+        // Running KM between previous filled date (exclusive) and current filled date (inclusive),
+        // or if first fill, trips on/before current fill date (or all trips up to next fill if none before)
+        let intervalKm = 0;
+        if (prevFill) {
+          for (const t of vehTrips) {
+            if (t.timestamp > prevFill.ts && t.timestamp <= currFill.ts) {
+              intervalKm += t.runningKm;
+            }
+          }
+        } else {
+          for (const t of vehTrips) {
+            if (t.timestamp <= currFill.ts) {
+              intervalKm += t.runningKm;
+            }
+          }
+          // If no trips on or before first fill, check trips between first fill and second fill
+          if (intervalKm === 0 && sortedFills.length > 1) {
+            const nextFill = sortedFills[1];
+            for (const t of vehTrips) {
+              if (t.timestamp >= currFill.ts && t.timestamp < nextFill.ts) {
+                intervalKm += t.runningKm;
+              }
+            }
+          }
+        }
+
+        const mileage =
+          intervalKm > 0 && currFill.liters > 0
+            ? Math.round((intervalKm / currFill.liters) * 100) / 100
+            : 0;
+        const rate =
+          currFill.liters > 0 ? Math.round((currFill.amount / currFill.liters) * 100) / 100 : 0;
+
+        fuelByKey.set(`${vKey}|${currFill.dateKey}`, {
+          liters: currFill.liters,
+          amount: currFill.amount,
+          rate,
+          particulars: currFill.particulars,
+          mileage,
+        });
+      }
+    }
+
+    // 3. Index Maintenance by (vehKey|dateKey)
+    const maintByKey = new Map<string, number>();
+    for (const m of maintenanceEntries) {
+      const vKey = normalizeVeh(m.vehicleNumber);
+      const dKey = normalizeDateKey(m.date);
+      const k = `${vKey}|${dKey}`;
+      if (m.vehicleNumber && !displayVehMap.has(vKey)) displayVehMap.set(vKey, m.vehicleNumber.trim().toUpperCase());
+      if (m.date && !displayDateMap.has(dKey)) displayDateMap.set(dKey, m.date.trim());
+      maintByKey.set(k, (maintByKey.get(k) || 0) + (Number(m.amount) || 0));
+    }
+
+    // 4. Index Expenses by (vehKey|dateKey) keeping per-category breakdown for pill display
+    const expByKey = new Map<string, Map<string, number>>();
+    for (const exp of expenses) {
+      const vKey = normalizeVeh(exp.vehicleNumber);
+      const dKey = normalizeDateKey(exp.date);
+      const k = `${vKey}|${dKey}`;
+      if (exp.vehicleNumber && !displayVehMap.has(vKey)) displayVehMap.set(vKey, exp.vehicleNumber.trim().toUpperCase());
+      if (exp.date && !displayDateMap.has(dKey)) displayDateMap.set(dKey, exp.date.trim());
+
+      const catMap = expByKey.get(k) || new Map<string, number>();
+      const catName = (exp.category || 'Other Expense').trim();
+      catMap.set(catName, (catMap.get(catName) || 0) + (Number(exp.amount) || 0));
+      expByKey.set(k, catMap);
+    }
+
+    const matchedKeys = new Set<string>();
+
     const rows = rawTrips.map((item) => {
-      const { bill, trip, tripIndex, tripDate, dateKey, vehKey, runningKm } = item;
+      const { bill, trip, tripIndex, tripDate, dateKey, timestamp, vehKey, runningKm } = item;
       const key = `${vehKey}|${dateKey}`;
       matchedKeys.add(key);
+
       const groupKm = totalKmByKey.get(key) || 0;
       const groupCount = tripCountByKey.get(key) || 1;
       const share = groupKm > 0 ? runningKm / groupKm : 1 / groupCount;
 
       const fuelGroup = fuelByKey.get(key);
+      const fuelParticulars = fuelGroup ? Array.from(fuelGroup.particulars).join(', ') : '';
       const dieselQty = fuelGroup ? Math.round(fuelGroup.liters * share * 100) / 100 : 0;
       const dieselAmount = fuelGroup ? Math.round(fuelGroup.amount * share) : 0;
-      const dieselRate = dieselQty > 0 ? Math.round((dieselAmount / dieselQty) * 100) / 100 : 0;
-      const mileage = runningKm > 0 && dieselQty > 0 ? Math.round((runningKm / dieselQty) * 100) / 100 : 0;
+      const dieselRate = fuelGroup ? fuelGroup.rate : 0;
+      const mileage = fuelGroup ? fuelGroup.mileage : 0;
 
       const maintGroup = maintByKey.get(key) || 0;
       const maintenanceExp = Math.round(maintGroup * share);
 
-      const expGroup = expByKey.get(key);
-      const driverFoodExp = expGroup ? Math.round(expGroup.driverFood * share) : 0;
-      const tollFromExpenses = expGroup ? Math.round(expGroup.toll * share) : 0;
-      const rtoFromExpenses = expGroup ? Math.round(expGroup.rto * share) : 0;
-      const otherExp = expGroup ? Math.round(expGroup.other * share) : 0;
+      const expCatMap = expByKey.get(key);
+      const expensePills: ExpensePillItem[] = [];
+      let expensesTotal = 0;
+      if (expCatMap) {
+        for (const [catName, catAmt] of expCatMap.entries()) {
+          const scaledAmt = Math.round(catAmt * share);
+          if (scaledAmt > 0) {
+            expensePills.push({ category: catName, amount: scaledAmt });
+            expensesTotal += scaledAmt;
+          }
+        }
+      }
 
-      // Bill RTO share across visible enabled trips
-      const billTripsCount = Math.max(
-        1,
-        (bill.trips || []).slice(0, bill.visibleTrips ?? bill.trips?.length ?? 0).filter((t) => t.enabled !== false).length
-      );
-      const billRtoTotal =
-        bill.keralaRtoEnabled && (Number(bill.keralaRtoMultiplier) || 0) > 0
-          ? (Number(bill.keralaRtoMultiplier) || 0) * (Number(bill.keralaRtoAmount) || 0)
-          : 0;
-      const rtoExp = rtoFromExpenses + Math.round(billRtoTotal / billTripsCount);
-
-      const tollGateExp = tollFromExpenses;
+      // Invoice Section 2 Toll Gate Exp (billed to company)
+      const tollGateExp = trip.tollEnabled ? Math.round(Number(trip.tollAmount) || 0) : 0;
 
       // Driver Salary
       let driverRate = Number(trip.driverRate) || 0;
@@ -550,33 +611,27 @@ export function MasterTripSheetManager() {
       }
       const driverSalary = Math.round(runningKm * driverRate);
 
-      const totalExpenses =
-        dieselAmount + driverFoodExp + rtoExp + maintenanceExp + tollGateExp + otherExp + driverSalary;
+      const totalExpenses = dieselAmount + maintenanceExp + expensesTotal + driverSalary;
 
       const freightPerKm = Number(trip.rate) || 0;
-      const freightAmount = Math.round(runningKm * freightPerKm);
-      const tripTollOnInvoice = trip.tollEnabled ? Number(trip.tollAmount) || 0 : 0;
-      const tdsRate = getBillTdsRate(bill);
-      const billGrossForTrip = freightAmount + tripTollOnInvoice + Math.round(billRtoTotal / billTripsCount);
-      const billAmount = Math.round(billGrossForTrip * (1 - tdsRate / 100));
+      const freightAmount = Math.round(runningKm * freightPerKm); // Excluding toll expenses
+      const billAmount = freightAmount + tollGateExp; // Amount billed to company including toll expenses
 
-      // Net P&L using freightAmount (excluding toll reimbursement, after TDS) vs totalExpenses
-      const netFreightAfterTds = Math.round((freightAmount + Math.round(billRtoTotal / billTripsCount)) * (1 - tdsRate / 100));
-      const net = netFreightAfterTds - totalExpenses;
+      const net = freightAmount - totalExpenses;
       const profit = net >= 0 ? net : 0;
       const loss = net < 0 ? Math.abs(net) : 0;
 
-      const fromPlace =
-        (bill.branch && bill.branch.trim()) ||
-        (bill.consignorAddress && bill.consignorAddress.trim()) ||
-        '';
-
+      // Strictly from Section 1 Consignee/Consignor From in DB
+      const fromPlace = (bill.consignorFromAddress || '').trim();
       const rowKey = `${bill.billNumber}_${tripIndex}`;
+      const parsedMonth = parseMonthFromDate(tripDate);
 
       const row: Record<string, any> = {
         rowKey,
         billNumber: bill.billNumber,
-        timestamp: parseDateToTimestamp(tripDate),
+        timestamp,
+        monthKey: parsedMonth?.key || 'unknown',
+        monthLabel: parsedMonth?.label || 'Undated',
         date: tripDate,
         vehicleNumber: (bill.vehicleNumber || '').trim().toUpperCase(),
         driverName: (trip.driverName || '').trim(),
@@ -591,15 +646,15 @@ export function MasterTripSheetManager() {
         openingKm: Number(trip.startingKm) || 0,
         closingKm: Number(trip.closingKm) || 0,
         runningKm,
+        fuelParticulars,
         dieselQty,
         dieselRate,
         dieselAmount,
         mileage,
-        driverFoodExp,
-        rtoExp,
         maintenanceExp,
         tollGateExp,
-        otherExp,
+        expensesTotal,
+        expensePills,
         driverSalary,
         totalExpenses,
         freightPerKm,
@@ -609,7 +664,6 @@ export function MasterTripSheetManager() {
         loss,
       };
 
-      // Overlay any DB-saved custom cell values or manual edits
       const overrides = cellValues[rowKey];
       if (overrides) {
         for (const [cKey, cVal] of Object.entries(overrides)) {
@@ -620,7 +674,7 @@ export function MasterTripSheetManager() {
       return row;
     });
 
-    // Include unmatched Fuel, Maintenance, and Expense entries (days without an invoice trip or GENERAL account)
+    // Include standalone Fuel, Maintenance, and Expense entries on dates with no invoice trip
     const extraKeys = new Set<string>([
       ...fuelByKey.keys(),
       ...maintByKey.keys(),
@@ -632,47 +686,60 @@ export function MasterTripSheetManager() {
       const [vKey, dKey] = extraKey.split('|');
       const fuelGroup = fuelByKey.get(extraKey);
       const maintCost = Math.round(maintByKey.get(extraKey) || 0);
-      const expGroup = expByKey.get(extraKey);
+      const expCatMap = expByKey.get(extraKey);
 
+      const fuelParticulars = fuelGroup ? Array.from(fuelGroup.particulars).join(', ') : '';
       const dieselQty = fuelGroup ? Math.round(fuelGroup.liters * 100) / 100 : 0;
       const dieselAmount = fuelGroup ? Math.round(fuelGroup.amount) : 0;
-      const dieselRate = dieselQty > 0 ? Math.round((dieselAmount / dieselQty) * 100) / 100 : 0;
-      const driverFoodExp = expGroup ? Math.round(expGroup.driverFood) : 0;
-      const rtoExp = expGroup ? Math.round(expGroup.rto) : 0;
-      const tollGateExp = expGroup ? Math.round(expGroup.toll) : 0;
-      const otherExp = expGroup ? Math.round(expGroup.other) : 0;
-      const totalExpenses = dieselAmount + driverFoodExp + rtoExp + maintCost + tollGateExp + otherExp;
+      const dieselRate = fuelGroup ? fuelGroup.rate : 0;
+      const mileage = fuelGroup ? fuelGroup.mileage : 0;
 
+      const expensePills: ExpensePillItem[] = [];
+      let expensesTotal = 0;
+      if (expCatMap) {
+        for (const [catName, catAmt] of expCatMap.entries()) {
+          const amt = Math.round(catAmt);
+          if (amt > 0) {
+            expensePills.push({ category: catName, amount: amt });
+            expensesTotal += amt;
+          }
+        }
+      }
+
+      const totalExpenses = dieselAmount + maintCost + expensesTotal;
       if (totalExpenses === 0 && dieselQty === 0) continue;
 
       const dateDisplay = displayDateMap.get(dKey) || dKey;
       const vehDisplay = displayVehMap.get(vKey) || vKey || 'GENERAL';
       const rowKey = `extra_${vKey}_${dKey}`;
+      const parsedMonth = parseMonthFromDate(dateDisplay);
 
       const extraRow: Record<string, any> = {
         rowKey,
         billNumber: 0,
         timestamp: parseDateToTimestamp(dateDisplay),
+        monthKey: parsedMonth?.key || 'unknown',
+        monthLabel: parsedMonth?.label || 'Undated',
         date: dateDisplay,
         vehicleNumber: vehDisplay,
         driverName: '',
         dcNo: '',
         fromPlace: '',
         toPlace: '',
-        particulars: 'Non-Trip Fuel / Expense Entry',
+        particulars: '',
         quantity: '',
         openingKm: 0,
         closingKm: 0,
         runningKm: 0,
+        fuelParticulars,
         dieselQty,
         dieselRate,
         dieselAmount,
-        mileage: 0,
-        driverFoodExp,
-        rtoExp,
+        mileage,
         maintenanceExp: maintCost,
-        tollGateExp,
-        otherExp,
+        tollGateExp: 0,
+        expensesTotal,
+        expensePills,
         driverSalary: 0,
         totalExpenses,
         freightPerKm: 0,
@@ -709,6 +776,7 @@ export function MasterTripSheetManager() {
       if (targetVeh && normalizeVeh(row.vehicleNumber) !== targetVeh) return false;
       if (!isDateInRange(row.date, fromDate, toDate)) return false;
       if (q) {
+        const expCats = (row.expensePills || []).map((p: ExpensePillItem) => p.category).join(' ');
         const hay = [
           row.date,
           row.vehicleNumber,
@@ -717,6 +785,8 @@ export function MasterTripSheetManager() {
           row.fromPlace,
           row.toPlace,
           row.particulars,
+          row.fuelParticulars,
+          expCats,
         ]
           .join(' ')
           .toLowerCase();
@@ -734,11 +804,9 @@ export function MasterTripSheetManager() {
       'runningKm',
       'dieselQty',
       'dieselAmount',
-      'driverFoodExp',
-      'rtoExp',
       'maintenanceExp',
       'tollGateExp',
-      'otherExp',
+      'expensesTotal',
       'driverSalary',
       'totalExpenses',
       'freightAmount',
@@ -790,7 +858,6 @@ export function MasterTripSheetManager() {
     try {
       const supabase = createClient();
 
-      // Determine new sort_order list
       const ordered = [...columns];
       const newCol: SheetColumnDef = {
         column_key,
@@ -823,12 +890,11 @@ export function MasterTripSheetManager() {
       ]);
 
       if (insertErr) {
-        setColError(`Database error: ${insertErr.message}. Please run the updated supabase/schema.sql first.`);
+        setColError(`Database error: ${insertErr.message}. Please run Section 18 from supabase/schema.sql first.`);
         setColSaving(false);
         return;
       }
 
-      // Persist updated sort_order for all columns
       for (const c of reindexed) {
         if (c.column_key !== newCol.column_key) {
           await supabase
@@ -887,7 +953,7 @@ export function MasterTripSheetManager() {
     }
   };
 
-  // Restore all 27 default columns in Supabase DB
+  // Restore / Sync Default Columns in Supabase DB
   const handleRestoreDefaultColumns = async () => {
     try {
       const supabase = createClient();
@@ -897,6 +963,7 @@ export function MasterTripSheetManager() {
         ...customCols.map((c, idx) => ({ ...c, sort_order: DEFAULT_SHEET_COLUMNS.length + idx + 1 })),
       ];
 
+      await supabase.from('trip_sheet_columns').delete().eq('is_default', true);
       const { error } = await supabase.from('trip_sheet_columns').upsert(
         merged.map((c) => ({
           column_key: c.column_key,
@@ -960,7 +1027,18 @@ export function MasterTripSheetManager() {
 
     const headers = ['#', ...columns.map((c) => c.label)].map(escapeCsv).join(',');
     const body = filteredRows.map((row, idx) => {
-      const cells = [idx + 1, ...columns.map((c) => row[c.column_key] ?? '')];
+      const cells = [
+        idx + 1,
+        ...columns.map((c) => {
+          if (c.column_key === 'expensesTotal') {
+            const pills = (row.expensePills || []) as ExpensePillItem[];
+            if (pills.length > 0) {
+              return pills.map((p) => `${p.category}: Rs.${p.amount}`).join(' | ');
+            }
+          }
+          return row[c.column_key] ?? '';
+        }),
+      ];
       return cells.map(escapeCsv).join(',');
     });
 
@@ -1015,7 +1093,7 @@ export function MasterTripSheetManager() {
             <span>Master Trip Sheet (Excel Ledger)</span>
           </h2>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-zinc-400 mt-1">
-            Live database spreadsheet combining Invoices, Fuel, Maintenance, Expenses, and Driver Salaries
+            Live SQL database spreadsheet combining Invoices, Fuel, Maintenance, Expenses, and Driver Salaries
           </p>
         </div>
 
@@ -1033,16 +1111,15 @@ export function MasterTripSheetManager() {
             <span>Insert Column</span>
           </button>
 
-          {columns.length < DEFAULT_SHEET_COLUMNS.length && (
-            <button
-              type="button"
-              onClick={handleRestoreDefaultColumns}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 text-xs font-semibold transition-all cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Restore Default Columns</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleRestoreDefaultColumns}
+            title="Sync default columns in database"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 text-xs font-semibold transition-all cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Sync Columns</span>
+          </button>
 
           <button
             type="button"
@@ -1071,7 +1148,7 @@ export function MasterTripSheetManager() {
           <div>
             <p className="font-bold">Database Tables Setup Required for Custom Columns</p>
             <p className="mt-0.5">
-              All trip rows and calculations below are live from Supabase. To insert or delete columns permanently in Supabase, run the new Section 16 SQL from <span className="font-mono font-semibold">supabase/schema.sql</span> in your Supabase SQL Editor.
+              To insert or delete columns permanently in Supabase, run Section 18 from <span className="font-mono font-semibold">supabase/schema.sql</span> in your Supabase SQL Editor.
             </p>
           </div>
         </div>
@@ -1094,7 +1171,7 @@ export function MasterTripSheetManager() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search Date, Vehicle, Driver, DC No, From/To Place, Particulars..."
+              placeholder="Search Date, Vehicle, Driver, DC No, From/To Place, Particulars, Expense Category..."
               className="w-full h-10 pl-9 pr-9 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-600"
             />
             {searchQuery && (
@@ -1211,7 +1288,7 @@ export function MasterTripSheetManager() {
                             type="button"
                             onClick={() => setDeletingCol(col)}
                             title={`Delete "${col.label}" column`}
-                            className="p-0.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors cursor-pointer no-print"
+                            className="p-0.5 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors cursor-pointer no-print"
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
@@ -1223,76 +1300,112 @@ export function MasterTripSheetManager() {
               </thead>
 
               <tbody className="divide-y divide-gray-200 dark:divide-zinc-800">
-                {filteredRows.map((row, rowIdx) => (
-                  <tr
-                    key={row.rowKey}
-                    className={`hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors ${
-                      rowIdx % 2 === 1 ? 'bg-gray-50/50 dark:bg-zinc-900/50' : 'bg-white dark:bg-zinc-900'
-                    }`}
-                  >
-                    <td className="sticky left-0 z-10 bg-gray-100 dark:bg-zinc-800/90 border-r border-gray-300 dark:border-zinc-700 py-2 px-2.5 text-center font-mono font-semibold text-gray-500 dark:text-zinc-400">
-                      {rowIdx + 1}
-                    </td>
-                    {columns.map((col) => {
-                      const isNumeric = col.data_type === 'number' || col.data_type === 'currency';
-                      const isEditing =
-                        editingCell?.rowKey === row.rowKey && editingCell?.colKey === col.column_key;
+                {filteredRows.map((row, rowIdx) => {
+                  const prevRow = rowIdx > 0 ? filteredRows[rowIdx - 1] : null;
+                  const showMonthHeader =
+                    periodPreset === 'all' &&
+                    (!prevRow || prevRow.monthKey !== row.monthKey);
 
-                      const isProfit = col.column_key === 'profit' && Number(row.profit) > 0;
-                      const isLoss = col.column_key === 'loss' && Number(row.loss) > 0;
-
-                      return (
-                        <td
-                          key={col.column_key}
-                          onDoubleClick={() => {
-                            setEditingCell({ rowKey: row.rowKey, colKey: col.column_key });
-                            setEditingCellVal(String(row[col.column_key] ?? ''));
-                          }}
-                          title="Double-click to edit cell value"
-                          className={`border-r border-gray-200 dark:border-zinc-800 py-2 px-3 whitespace-nowrap cursor-cell ${
-                            isNumeric ? 'text-right font-mono' : 'text-left'
-                          } ${
-                            isProfit
-                              ? 'text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50/40 dark:bg-emerald-950/20'
-                              : isLoss
-                              ? 'text-red-600 dark:text-red-400 font-bold bg-red-50/40 dark:bg-red-950/20'
-                              : 'text-gray-800 dark:text-zinc-200'
-                          }`}
-                        >
-                          {isEditing ? (
-                            <div className="flex items-center gap-1 min-w-[110px]">
-                              <input
-                                type="text"
-                                value={editingCellVal}
-                                onChange={(e) => setEditingCellVal(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    handleSaveCellEdit(row.rowKey, col.column_key);
-                                  } else if (e.key === 'Escape') {
-                                    setEditingCell(null);
-                                  }
-                                }}
-                                autoFocus
-                                className="w-full px-1.5 py-0.5 text-xs rounded border border-blue-500 bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 focus:outline-none"
-                              />
-                              <button
-                                type="button"
-                                disabled={savingCell}
-                                onClick={() => handleSaveCellEdit(row.rowKey, col.column_key)}
-                                className="p-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shrink-0"
-                              >
-                                <Check className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ) : (
-                            <span>{formatCellDisplay(row, col)}</span>
-                          )}
+                  return (
+                    <React.Fragment key={row.rowKey}>
+                      {showMonthHeader && (
+                        <tr className="bg-slate-200/80 dark:bg-zinc-800/95 border-y-2 border-slate-300 dark:border-zinc-700">
+                          <td
+                            colSpan={columns.length + 1}
+                            className="py-2.5 px-4 text-left"
+                          >
+                            <span className="text-base sm:text-lg font-black uppercase tracking-wide text-gray-900 dark:text-white">
+                              {row.monthLabel}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      <tr
+                        className={`hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors ${
+                          rowIdx % 2 === 1 ? 'bg-gray-50/50 dark:bg-zinc-900/50' : 'bg-white dark:bg-zinc-900'
+                        }`}
+                      >
+                        <td className="sticky left-0 z-10 bg-gray-100 dark:bg-zinc-800/90 border-r border-gray-300 dark:border-zinc-700 py-2 px-2.5 text-center font-mono font-semibold text-gray-500 dark:text-zinc-400">
+                          {rowIdx + 1}
                         </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                        {columns.map((col) => {
+                          const isNumeric = col.data_type === 'number' || col.data_type === 'currency';
+                          const isEditing =
+                            editingCell?.rowKey === row.rowKey && editingCell?.colKey === col.column_key;
+
+                          const isProfit = col.column_key === 'profit' && Number(row.profit) > 0;
+                          const isLoss = col.column_key === 'loss' && Number(row.loss) > 0;
+
+                          return (
+                            <td
+                              key={col.column_key}
+                              onDoubleClick={() => {
+                                setEditingCell({ rowKey: row.rowKey, colKey: col.column_key });
+                                setEditingCellVal(String(row[col.column_key] ?? ''));
+                              }}
+                              title="Double-click to edit cell value"
+                              className={`border-r border-gray-200 dark:border-zinc-800 py-2 px-3 whitespace-nowrap cursor-cell ${
+                                isNumeric ? 'text-right font-mono' : 'text-left'
+                              } ${
+                                isProfit
+                                  ? 'text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50/40 dark:bg-emerald-950/20'
+                                  : isLoss
+                                  ? 'text-red-600 dark:text-red-400 font-bold bg-red-50/40 dark:bg-red-950/20'
+                                  : 'text-gray-800 dark:text-zinc-200'
+                              }`}
+                            >
+                              {isEditing ? (
+                                <div className="flex items-center gap-1 min-w-[110px]">
+                                  <input
+                                    type="text"
+                                    value={editingCellVal}
+                                    onChange={(e) => setEditingCellVal(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleSaveCellEdit(row.rowKey, col.column_key);
+                                      } else if (e.key === 'Escape') {
+                                        setEditingCell(null);
+                                      }
+                                    }}
+                                    autoFocus
+                                    className="w-full px-1.5 py-0.5 text-xs rounded border border-blue-500 bg-white dark:bg-zinc-950 text-gray-900 dark:text-zinc-100 focus:outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={savingCell}
+                                    onClick={() => handleSaveCellEdit(row.rowKey, col.column_key)}
+                                    className="p-0.5 rounded bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shrink-0"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ) : col.column_key === 'expensesTotal' ? (
+                                <div className="flex flex-wrap items-center justify-end gap-1 max-w-[320px]">
+                                  {Array.isArray(row.expensePills) && row.expensePills.length > 0 ? (
+                                    row.expensePills.map((pill: ExpensePillItem) => (
+                                      <span
+                                        key={pill.category}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/60"
+                                      >
+                                        <span className="truncate max-w-[140px] font-sans">{pill.category}:</span>
+                                        <span className="font-mono font-bold">Rs.{pill.amount.toLocaleString('en-IN')}</span>
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-gray-400 dark:text-zinc-500">Rs.0</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span>{formatCellDisplay(row, col)}</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
 
               <tfoot className="sticky bottom-0 z-20">
@@ -1514,4 +1627,3 @@ export function MasterTripSheetManager() {
     </div>
   );
 }
-
