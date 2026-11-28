@@ -1267,7 +1267,7 @@ export function MasterTripSheetManager() {
         rows: filteredRows,
         columnTotals,
         monthSummaries,
-        showMonthHeaders: periodPreset === 'all',
+        showMonthHeaders: true,
         dateTag: formatDDMMYYYY(new Date()),
         filterSummary: buildFilterSummaryText(),
       });
@@ -1285,7 +1285,7 @@ export function MasterTripSheetManager() {
       rows: filteredRows,
       columnTotals,
       monthSummaries,
-      showMonthHeaders: periodPreset === 'all',
+      showMonthHeaders: true,
       dateTag: formatDDMMYYYY(new Date()),
       filterSummary: buildFilterSummaryText(),
     });
@@ -1560,9 +1560,7 @@ export function MasterTripSheetManager() {
               <tbody className="divide-y divide-gray-200 dark:divide-zinc-800">
                 {filteredRows.map((row, rowIdx) => {
                   const prevRow = rowIdx > 0 ? filteredRows[rowIdx - 1] : null;
-                  const showMonthHeader =
-                    periodPreset === 'all' &&
-                    (!prevRow || prevRow.monthKey !== row.monthKey);
+                  const showMonthHeader = !prevRow || prevRow.monthKey !== row.monthKey;
 
                   return (
                     <React.Fragment key={row.rowKey}>
