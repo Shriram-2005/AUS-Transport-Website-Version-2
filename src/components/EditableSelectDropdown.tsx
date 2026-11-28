@@ -218,7 +218,7 @@ export function EditableSelectDropdown({
                             setEditValue(opt);
                           }}
                           title={`Edit "${opt}"`}
-                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all cursor-pointer"
+                          className="opacity-100 p-1 text-gray-500 hover:text-blue-600 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all cursor-pointer"
                         >
                           <Pencil className="w-3 h-3" />
                         </button>
@@ -234,7 +234,7 @@ export function EditableSelectDropdown({
                             }
                           }}
                           title={`Delete "${opt}"`}
-                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
+                          className="opacity-100 p-1 text-gray-500 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>

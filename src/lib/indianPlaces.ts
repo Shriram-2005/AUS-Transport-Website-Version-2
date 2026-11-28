@@ -23,18 +23,50 @@ function loadCustomPlaces(): IndianPlace[] {
   }
 }
 
+export function getCustomIndianPlaces(): IndianPlace[] {
+  return loadCustomPlaces();
+}
+
 export function addCustomIndianPlace(name: string, state = ''): void {
   const trimmed = name.trim();
   if (!trimmed) return;
   const customs = loadCustomPlaces();
   if (!customs.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())) {
-    const newPlace: IndianPlace = { name: trimmed, state: state.trim() };
+    const newPlace: IndianPlace = { name: trimmed, state: state.trim() || 'Saved Place' };
     const updated = [newPlace, ...customs];
     try {
       localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(updated));
     } catch {}
-    allPlaces = [newPlace, ...allPlaces];
+    if (!allPlaces.some((p) => p.name.toLowerCase() === trimmed.toLowerCase())) {
+      allPlaces = [newPlace, ...allPlaces];
+    }
   }
+}
+
+export function editCustomIndianPlace(oldName: string, newName: string): void {
+  const cleanNew = newName.trim();
+  if (!cleanNew) return;
+  const customs = loadCustomPlaces();
+  const updated = customs.map((c) =>
+    c.name.toLowerCase() === oldName.toLowerCase() ? { ...c, name: cleanNew } : c
+  );
+  try {
+    localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(updated));
+  } catch {}
+  allPlaces = allPlaces.map((p) =>
+    p.name.toLowerCase() === oldName.toLowerCase() ? { ...p, name: cleanNew } : p
+  );
+}
+
+export function deleteCustomIndianPlace(name: string): void {
+  const customs = loadCustomPlaces();
+  const updated = customs.filter((c) => c.name.toLowerCase() !== name.toLowerCase());
+  try {
+    localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(updated));
+  } catch {}
+  allPlaces = allPlaces.filter(
+    (p) => !(p.name.toLowerCase() === name.toLowerCase() && (p.state === 'Saved Place' || p.state === ''))
+  );
 }
 
 export async function initializeIndianPlaces(): Promise<IndianPlace[]> {

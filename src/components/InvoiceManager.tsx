@@ -55,7 +55,14 @@ import { KpiDashboardBar } from './KpiDashboardBar';
 import { KpiCardDefinition } from '@/lib/kpiManager';
 import { getStoredVehicles, saveStoredVehicles, updateVehicleKmFromBill, VEHICLES_CHANGE_EVENT, Vehicle } from '@/lib/vehicles';
 import { getStoredDrivers, saveStoredDrivers, DRIVERS_CHANGE_EVENT, Driver } from '@/lib/drivers';
-import { initializeIndianPlaces, searchIndianPlaces, IndianPlace } from '@/lib/indianPlaces';
+import {
+  initializeIndianPlaces,
+  searchIndianPlaces,
+  addCustomIndianPlace,
+  editCustomIndianPlace,
+  deleteCustomIndianPlace,
+  IndianPlace,
+} from '@/lib/indianPlaces';
 import {
   getStoredInvoices,
   saveStoredInvoices,
@@ -1714,9 +1721,15 @@ export function InvoiceManager() {
     setParticularDropdownOpen(false);
   }, []);
 
-  const selectPlace = (place: string) => {
+  const selectPlace = (place: string, saveAsCustom = false) => {
     const trimmed = place.trim();
     if (!trimmed) return;
+
+    // Permanently save custom place so next time user searches it, it appears automatically
+    if (saveAsCustom) {
+      addCustomIndianPlace(trimmed);
+    }
+
     const currentRoute = activeTrip.route || '';
     const places = currentRoute
       .split(',')
@@ -3654,7 +3667,7 @@ export function InvoiceManager() {
                                     setEditingBranchValue(branch);
                                   }}
                                   title={`Edit "${branch}"`}
-                                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all cursor-pointer"
+                                  className="opacity-100 p-1 text-gray-500 hover:text-blue-600 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all cursor-pointer"
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
                                 </button>
@@ -3665,7 +3678,7 @@ export function InvoiceManager() {
                                     handleDeleteBranch(branch);
                                   }}
                                   title={`Delete "${branch}"`}
-                                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
+                                  className="opacity-100 p-1 text-gray-500 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -4245,7 +4258,7 @@ export function InvoiceManager() {
                                             setEditingBranchValue(branch);
                                           }}
                                           title={`Edit "${branch}"`}
-                                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all cursor-pointer"
+                                          className="opacity-100 p-1 text-gray-500 hover:text-blue-600 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all cursor-pointer"
                                         >
                                           <Pencil className="w-3.5 h-3.5" />
                                         </button>
@@ -4256,7 +4269,7 @@ export function InvoiceManager() {
                                             handleDeleteBranch(branch);
                                           }}
                                           title={`Delete "${branch}"`}
-                                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
+                                          className="opacity-100 p-1 text-gray-500 hover:text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-950/50 transition-all cursor-pointer"
                                         >
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
@@ -5325,10 +5338,10 @@ export function InvoiceManager() {
                         ))}
                     </div>
 
-                    <div className="relative">
+                    <div className="relative flex items-center gap-2">
                       <input
                         type="text"
-                        placeholder="Search any Indian city/town or type custom place & press Enter"
+                        placeholder="Search any Indian city/town or type custom place & save"
                         value={placeSearchInput}
                         onChange={(e) => {
                           setPlaceSearchInput(e.target.value);
@@ -5341,42 +5354,94 @@ export function InvoiceManager() {
                           if (e.key === 'Enter') {
                             e.preventDefault();
                             if (placeSearchInput.trim()) {
-                              selectPlace(placeSearchInput.trim());
+                              selectPlace(placeSearchInput.trim(), true);
                             }
                           }
                         }}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 text-sm font-medium shadow-xs hover:border-gray-400 dark:hover:border-zinc-600 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                        className="flex-1 px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 text-sm font-medium shadow-xs hover:border-gray-400 dark:hover:border-zinc-600 focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                       />
+                      {placeSearchInput.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => selectPlace(placeSearchInput.trim(), true)}
+                          className="px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Save &amp; Add</span>
+                        </button>
+                      )}
                     </div>
 
                     {/* Progressive Reveal Places dropdown */}
                     {placeDropdownOpen && placeSearchInput.trim() && (
-                      <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-xl max-h-56 overflow-y-auto z-30 p-1.5 space-y-0.5">
-                        {/* Always allow adding whatever user typed as a custom place */}
+                      <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-xl max-h-60 overflow-y-auto z-30 p-1.5 space-y-0.5">
+                        {/* Always allow saving & adding whatever user typed as a custom place */}
                         <div
-                          onClick={() => selectPlace(placeSearchInput.trim())}
+                          onClick={() => selectPlace(placeSearchInput.trim(), true)}
                           className="px-3 py-2 cursor-pointer bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-bold flex items-center justify-between transition-colors mb-1"
                         >
-                          <span>+ Add &quot;{placeSearchInput.trim()}&quot; as custom place</span>
+                          <span>+ Save &amp; Add &quot;{placeSearchInput.trim()}&quot; for future trips</span>
                           <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-200/80 dark:bg-blue-800 text-blue-900 dark:text-blue-100 font-mono">
-                            Press Enter
+                            Save Place
                           </span>
                         </div>
 
-                        {placeResults.map((place) => (
-                          <div
-                            key={`${place.name}-${place.state || ''}`}
-                            onClick={() => selectPlace(place.name)}
-                            className="px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-xs font-semibold text-gray-900 dark:text-zinc-100 transition-colors flex items-center justify-between"
-                          >
-                            <span>{place.name}</span>
-                            {place.state && (
-                              <span className="text-[10px] text-gray-400 dark:text-zinc-500 font-normal">
-                                {place.state}
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                        {placeResults.map((place) => {
+                          const isSavedCustom = place.state === 'Saved Place';
+                          return (
+                            <div
+                              key={`${place.name}-${place.state || ''}`}
+                              onClick={() => selectPlace(place.name)}
+                              className="px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-xs font-semibold text-gray-900 dark:text-zinc-100 transition-colors flex items-center justify-between gap-2"
+                            >
+                              <span className="truncate">{place.name}</span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {place.state && (
+                                  <span
+                                    className={`text-[10px] font-normal px-1.5 py-0.5 rounded ${
+                                      isSavedCustom
+                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 font-semibold'
+                                        : 'text-gray-400 dark:text-zinc-500'
+                                    }`}
+                                  >
+                                    {place.state}
+                                  </span>
+                                )}
+                                {isSavedCustom && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const renamed = window.prompt('Edit saved place name:', place.name);
+                                        if (renamed && renamed.trim()) {
+                                          editCustomIndianPlace(place.name, renamed.trim());
+                                          setPlaceResults(searchIndianPlaces(placeSearchInput));
+                                        }
+                                      }}
+                                      title="Edit saved place"
+                                      className="p-1 text-gray-500 hover:text-blue-600 rounded hover:bg-blue-50 dark:hover:bg-blue-950/50 cursor-pointer"
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteCustomIndianPlace(place.name);
+                                        setPlaceResults(searchIndianPlaces(placeSearchInput));
+                                      }}
+                                      title="Delete saved place"
+                                      className="p-1 text-gray-500 hover:text-red-600 rounded hover:bg-red-50 dark:hover:bg-red-950/50 cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
