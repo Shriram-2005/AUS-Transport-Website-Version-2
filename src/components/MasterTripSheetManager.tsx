@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   FileSpreadsheet,
   Plus,
@@ -19,6 +19,7 @@ import {
   Calculator,
   Link2,
   PenLine,
+  MoreVertical,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { BillData, getBillTdsRate, parseMonthFromDate } from '@/lib/invoices';
@@ -154,8 +155,21 @@ export function MasterTripSheetManager() {
   const [deletingCol, setDeletingCol] = useState<SheetColumnDef | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
-  // Export state
+  // Export state & mobile actions menu
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [headerMoreOpen, setHeaderMoreOpen] = useState(false);
+  const headerMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!headerMoreOpen) return;
+    const onOutside = (e: MouseEvent) => {
+      if (headerMoreRef.current && !headerMoreRef.current.contains(e.target as Node)) {
+        setHeaderMoreOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, [headerMoreOpen]);
 
   // Inline cell editing
   const [editingCell, setEditingCell] = useState<{ rowKey: string; colKey: string } | null>(null);
@@ -1350,7 +1364,7 @@ export function MasterTripSheetManager() {
               setNewColFormula('');
               setIsInsertColOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Insert Column</span>
@@ -1360,7 +1374,7 @@ export function MasterTripSheetManager() {
             type="button"
             onClick={handleRestoreDefaultColumns}
             title="Sync default columns in database"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 text-xs font-semibold transition-all cursor-pointer"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 text-xs font-semibold transition-all cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Sync Columns</span>
@@ -1370,21 +1384,61 @@ export function MasterTripSheetManager() {
             type="button"
             disabled={exportingExcel || filteredRows.length === 0}
             onClick={handleExportExcel}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
           >
             {exportingExcel ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            <span>{exportingExcel ? 'Exporting...' : 'Export Excel (.xlsx)'}</span>
+            <span className="hidden sm:inline">{exportingExcel ? 'Exporting...' : 'Export Excel (.xlsx)'}</span>
+            <span className="sm:hidden">{exportingExcel ? 'Exporting...' : 'Excel'}</span>
           </button>
 
           <button
             type="button"
             disabled={filteredRows.length === 0}
             onClick={handlePrintPdf}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 text-xs font-semibold transition-all cursor-pointer"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50 text-xs font-semibold transition-all cursor-pointer"
           >
             <Printer className="w-4 h-4" />
             <span>Print PDF</span>
           </button>
+
+          {/* Small screen 3-dot menu for Sync Columns & Print PDF */}
+          <div className="relative sm:hidden ml-auto" ref={headerMoreRef}>
+            <button
+              type="button"
+              onClick={() => setHeaderMoreOpen((prev) => !prev)}
+              aria-label="More ledger actions"
+              className="w-9 h-9 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-200 flex items-center justify-center cursor-pointer"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
+            {headerMoreOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl p-1.5 space-y-1 z-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHeaderMoreOpen(false);
+                    handleRestoreDefaultColumns();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer text-left"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Sync Columns</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={filteredRows.length === 0}
+                  onClick={() => {
+                    setHeaderMoreOpen(false);
+                    handlePrintPdf();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-40 cursor-pointer text-left"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print PDF</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { ThemeToggle } from './ThemeToggle';
 import { getDictionary } from '@/i18n/dictionaries';
@@ -16,7 +16,8 @@ import {
   Clock,
   Save,
   AlertCircle,
-  ArrowLeft
+  ArrowLeft,
+  MoreVertical
 } from 'lucide-react';
 import { checkDbConnection } from '@/lib/supabase/dbHealth';
 import {
@@ -53,6 +54,28 @@ export function DashboardHeader({
   // Auto-save and manual save status
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [lastSavedTime, setLastSavedTime] = useState<string>('');
+
+  // Small-display 3-dot overflow menu
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
+        setMobileMenuOpen(false);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [mobileMenuOpen]);
 
   // Check DB connection status
   const verifyDb = useCallback(async () => {
@@ -221,17 +244,16 @@ export function DashboardHeader({
           </span>
         </button>
 
-        {/* Dedicated Sub-category Refresh Page Button */}
+        {/* Dedicated Sub-category Refresh Page Button (Desktop/Tablet md+) */}
         <button
           type="button"
           onClick={handleRefreshClick}
           disabled={isRefreshing}
           title={`Reload and fetch latest data for ${activeTabLabel} from database`}
-          className="inline-flex items-center justify-center gap-1.5 w-9 h-9 sm:w-auto sm:px-3 sm:py-1.5 rounded-lg border border-black/15 dark:border-white/15 bg-black/[0.03] dark:bg-white/[0.04] hover:bg-black/10 dark:hover:bg-white/10 text-black dark:text-white text-xs font-semibold transition-all cursor-pointer select-none active:scale-95 shrink-0"
+          className="hidden md:inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-black/15 dark:border-white/15 bg-black/[0.03] dark:bg-white/[0.04] hover:bg-black/10 dark:hover:bg-white/10 text-black dark:text-white text-xs font-semibold transition-all cursor-pointer select-none active:scale-95 shrink-0"
         >
           <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isRefreshing ? 'animate-spin text-black dark:text-white' : 'text-black/70 dark:text-white/70'}`} />
-          <span className="hidden md:inline">Refresh {activeTabLabel} Page</span>
-          <span className="hidden sm:inline md:hidden">Refresh</span>
+          <span>Refresh {activeTabLabel} Page</span>
         </button>
 
         {/* Save Status Indicator */}
@@ -287,10 +309,10 @@ export function DashboardHeader({
         </button>
       </div>
 
-      {/* Right side: Profile, Theme Toggle & Logout */}
+      {/* Right side: Desktop Profile, Theme Toggle & Logout + Mobile 3-Dot Menu */}
       <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-        {/* Profile Pill */}
-        <div className="flex items-center gap-1.5 p-1 sm:px-2.5 sm:py-1 rounded-full border border-black/15 dark:border-white/15 bg-black/[0.02] dark:bg-white/[0.03] shrink-0">
+        {/* Profile Pill (md+) */}
+        <div className="hidden md:flex items-center gap-1.5 p-1 sm:px-2.5 sm:py-1 rounded-full border border-black/15 dark:border-white/15 bg-black/[0.02] dark:bg-white/[0.03] shrink-0">
           <div className="w-6 h-6 rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center font-bold text-xs select-none shrink-0">
             {userEmail ? userEmail.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
           </div>
@@ -305,20 +327,113 @@ export function DashboardHeader({
           </div>
         </div>
 
-        {/* Theme Toggle */}
-        <ThemeToggle />
+        {/* Theme Toggle (md+) */}
+        <div className="hidden md:block">
+          <ThemeToggle />
+        </div>
 
-        {/* Logout Button */}
+        {/* Logout Button (md+) */}
         <button
           type="button"
           onClick={onLogout}
           aria-label={dict.dashboard?.logoutAria}
           title="Log out of AUS Transport Console"
-          className="inline-flex items-center justify-center gap-1.5 w-9 h-9 sm:w-auto sm:px-3 sm:py-1.5 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all cursor-pointer text-xs font-semibold shrink-0"
+          className="hidden md:inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all cursor-pointer text-xs font-semibold shrink-0"
         >
-          <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-          <span className="hidden md:inline">{dict.dashboard?.logout}</span>
+          <LogOut className="w-4 h-4 shrink-0" />
+          <span>{dict.dashboard?.logout}</span>
         </button>
+
+        {/* Small Display 3-Dot Overflow Menu (< md) */}
+        <div className="relative md:hidden" ref={mobileMenuRef}>
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            aria-label="More header options"
+            title="More options"
+            className="w-9 h-9 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all cursor-pointer flex items-center justify-center shrink-0"
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+
+          {mobileMenuOpen && (
+            <div className="absolute right-0 top-full mt-2 w-64 rounded-2xl border border-black/15 dark:border-white/15 bg-white dark:bg-zinc-900 shadow-2xl p-2 space-y-1.5 z-[75] animate-in fade-in zoom-in-95 duration-150">
+              {/* Profile Summary */}
+              <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.04]">
+                <div className="w-8 h-8 rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center font-bold text-xs shrink-0">
+                  {userEmail ? userEmail.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-black dark:text-white truncate">
+                    {userEmail || dict.dashboard?.profile}
+                  </p>
+                  <p className="text-[10px] text-black/55 dark:text-white/55 flex items-center gap-1">
+                    <ShieldCheck className="w-2.5 h-2.5" />
+                    <span>{dict.dashboard?.roleAdmin}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Save Status */}
+              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs text-black/75 dark:text-white/75 border border-black/10 dark:border-white/10">
+                <span className="font-semibold">Status</span>
+                <span className="inline-flex items-center gap-1 font-medium">
+                  {saveStatus === 'saved' && (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>{lastSavedTime ? `Saved ${lastSavedTime}` : 'Saved'}</span>
+                    </>
+                  )}
+                  {saveStatus === 'saving' && (
+                    <>
+                      <Clock className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                      <span>Saving...</span>
+                    </>
+                  )}
+                  {saveStatus === 'unsaved' && (
+                    <>
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Unsaved</span>
+                    </>
+                  )}
+                </span>
+              </div>
+
+              {/* Refresh Page */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleRefreshClick();
+                  setMobileMenuOpen(false);
+                }}
+                disabled={isRefreshing}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-black dark:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer text-left"
+              >
+                <RefreshCw className={`w-4 h-4 shrink-0 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span className="truncate">Refresh {activeTabLabel}</span>
+              </button>
+
+              {/* Theme Toggle */}
+              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10">
+                <span className="text-xs font-semibold text-black dark:text-white">Appearance</span>
+                <ThemeToggle />
+              </div>
+
+              {/* Logout */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onLogout();
+                }}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer text-left border-t border-black/10 dark:border-white/10 mt-1 pt-2.5"
+              >
+                <LogOut className="w-4 h-4 shrink-0" />
+                <span>{dict.dashboard?.logout}</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
