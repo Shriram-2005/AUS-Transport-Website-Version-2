@@ -710,6 +710,102 @@ SELECT
     )
   ) AS net_operating_profit;
 
+-- ==============================================================================
+-- 16. Master Trip Sheet (Excel Ledger) Dynamic Columns & Cell Overrides
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS public.trip_sheet_columns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  column_key TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  data_type TEXT NOT NULL DEFAULT 'text' CHECK (data_type IN ('text', 'number', 'currency')),
+  sort_order INT NOT NULL DEFAULT 0,
+  is_default BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_trip_sheet_columns_order ON public.trip_sheet_columns(sort_order);
+
+ALTER TABLE public.trip_sheet_columns ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow authenticated read trip_sheet_columns" ON public.trip_sheet_columns;
+CREATE POLICY "Allow authenticated read trip_sheet_columns"
+  ON public.trip_sheet_columns FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated insert trip_sheet_columns" ON public.trip_sheet_columns;
+CREATE POLICY "Allow authenticated insert trip_sheet_columns"
+  ON public.trip_sheet_columns FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated update trip_sheet_columns" ON public.trip_sheet_columns;
+CREATE POLICY "Allow authenticated update trip_sheet_columns"
+  ON public.trip_sheet_columns FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated delete trip_sheet_columns" ON public.trip_sheet_columns;
+CREATE POLICY "Allow authenticated delete trip_sheet_columns"
+  ON public.trip_sheet_columns FOR DELETE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow anon read trip_sheet_columns" ON public.trip_sheet_columns;
+CREATE POLICY "Allow anon read trip_sheet_columns"
+  ON public.trip_sheet_columns FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert trip_sheet_columns" ON public.trip_sheet_columns;
+CREATE POLICY "Allow anon insert trip_sheet_columns"
+  ON public.trip_sheet_columns FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update trip_sheet_columns" ON public.trip_sheet_columns;
+CREATE POLICY "Allow anon update trip_sheet_columns"
+  ON public.trip_sheet_columns FOR UPDATE TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon delete trip_sheet_columns" ON public.trip_sheet_columns;
+CREATE POLICY "Allow anon delete trip_sheet_columns"
+  ON public.trip_sheet_columns FOR DELETE TO anon USING (true);
+
+CREATE TABLE IF NOT EXISTS public.trip_sheet_cell_values (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  row_key TEXT NOT NULL,
+  column_key TEXT NOT NULL,
+  value TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  UNIQUE(row_key, column_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trip_sheet_cells_row ON public.trip_sheet_cell_values(row_key);
+CREATE INDEX IF NOT EXISTS idx_trip_sheet_cells_col ON public.trip_sheet_cell_values(column_key);
+
+ALTER TABLE public.trip_sheet_cell_values ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow authenticated read trip_sheet_cell_values" ON public.trip_sheet_cell_values;
+CREATE POLICY "Allow authenticated read trip_sheet_cell_values"
+  ON public.trip_sheet_cell_values FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated insert trip_sheet_cell_values" ON public.trip_sheet_cell_values;
+CREATE POLICY "Allow authenticated insert trip_sheet_cell_values"
+  ON public.trip_sheet_cell_values FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated update trip_sheet_cell_values" ON public.trip_sheet_cell_values;
+CREATE POLICY "Allow authenticated update trip_sheet_cell_values"
+  ON public.trip_sheet_cell_values FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow authenticated delete trip_sheet_cell_values" ON public.trip_sheet_cell_values;
+CREATE POLICY "Allow authenticated delete trip_sheet_cell_values"
+  ON public.trip_sheet_cell_values FOR DELETE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow anon read trip_sheet_cell_values" ON public.trip_sheet_cell_values;
+CREATE POLICY "Allow anon read trip_sheet_cell_values"
+  ON public.trip_sheet_cell_values FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert trip_sheet_cell_values" ON public.trip_sheet_cell_values;
+CREATE POLICY "Allow anon insert trip_sheet_cell_values"
+  ON public.trip_sheet_cell_values FOR INSERT TO anon WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update trip_sheet_cell_values" ON public.trip_sheet_cell_values;
+CREATE POLICY "Allow anon update trip_sheet_cell_values"
+  ON public.trip_sheet_cell_values FOR UPDATE TO anon USING (true);
+
+DROP POLICY IF EXISTS "Allow anon delete trip_sheet_cell_values" ON public.trip_sheet_cell_values;
+CREATE POLICY "Allow anon delete trip_sheet_cell_values"
+  ON public.trip_sheet_cell_values FOR DELETE TO anon USING (true);
+
 
 
 

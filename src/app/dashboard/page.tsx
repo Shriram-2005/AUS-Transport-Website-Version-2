@@ -11,6 +11,7 @@ import { MaintenanceManager } from '@/components/MaintenanceManager';
 import { ExpenseManager } from '@/components/ExpenseManager';
 import { ProfitAndLossManager } from '@/components/ProfitAndLossManager';
 import { OverviewManager } from '@/components/OverviewManager';
+import { MasterTripSheetManager } from '@/components/MasterTripSheetManager';
 import { getDictionary } from '@/i18n/dictionaries';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -23,6 +24,7 @@ import {
   Wallet,
   TrendingUp,
   FileText,
+  FileSpreadsheet,
   Loader2,
 } from 'lucide-react';
 
@@ -35,7 +37,8 @@ type NavTabId =
   | 'invoices'
   | 'expenses'
   | 'profitAndLoss'
-  | 'documents';
+  | 'documents'
+  | 'tripSheet';
 
 const VALID_TABS: NavTabId[] = [
   'overview',
@@ -47,6 +50,7 @@ const VALID_TABS: NavTabId[] = [
   'expenses',
   'profitAndLoss',
   'documents',
+  'tripSheet',
 ];
 
 export default function DashboardPage() {
@@ -176,6 +180,7 @@ export default function DashboardPage() {
     { id: 'expenses' as const, label: dict.dashboard?.nav?.expenses ?? 'Expenses', icon: Wallet },
     { id: 'profitAndLoss' as const, label: dict.dashboard?.nav?.profitAndLoss ?? 'Profit & Loss', icon: TrendingUp },
     { id: 'documents' as const, label: dict.dashboard?.nav?.documents ?? 'Documents', icon: FileText },
+    { id: 'tripSheet' as const, label: 'Master Trip Sheet', icon: FileSpreadsheet },
   ];
 
   if (loading) {
@@ -306,6 +311,8 @@ export default function DashboardPage() {
             <ExpenseManager />
           ) : activeTab === 'profitAndLoss' ? (
             <ProfitAndLossManager />
+          ) : activeTab === 'tripSheet' ? (
+            <MasterTripSheetManager />
           ) : activeTab === 'overview' ? (
             <OverviewManager onNavigate={(tab) => navigateToTab(tab as any)} />
           ) : (
