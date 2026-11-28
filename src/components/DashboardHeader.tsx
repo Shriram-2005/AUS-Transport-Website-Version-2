@@ -134,15 +134,15 @@ export function DashboardHeader({
   };
 
   return (
-    <header className="w-full h-14 sm:h-16 flex items-center justify-between px-2.5 sm:px-4 border-b border-black/10 dark:border-white/10 bg-white/95 dark:bg-black/95 backdrop-blur-md sticky top-0 z-[60] transition-colors duration-200 no-print print:hidden gap-1.5 sm:gap-2 flex-nowrap overflow-x-hidden">
+    <header className="w-full min-h-14 sm:min-h-16 py-1.5 flex flex-wrap items-center justify-between px-2.5 sm:px-4 md:px-6 border-b border-black/10 dark:border-white/10 bg-white/95 dark:bg-black/95 backdrop-blur-md sticky top-0 z-[60] transition-colors duration-200 no-print print:hidden gap-1.5 sm:gap-2.5">
       {/* Left side: Hamburger button + Back Button + AUS Transport Brand */}
-      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 min-w-0">
         <button
           type="button"
           onClick={onToggleSidebar}
           aria-label={isOpen ? dict.dashboard?.menuCloseAria : dict.dashboard?.menuOpenAria}
           title={isOpen ? 'Close menu' : 'Open navigation menu'}
-          className="w-10 h-10 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center select-none touch-manipulation shrink-0"
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-black/15 dark:border-white/15 text-black dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center select-none touch-manipulation shrink-0"
         >
           {isOpen ? (
             <X className="w-5 h-5 transition-transform duration-200" />
@@ -171,7 +171,7 @@ export function DashboardHeader({
 
         <Link
           href="/dashboard"
-          className="font-bold text-sm sm:text-base md:text-xl tracking-tight text-black dark:text-white select-none no-underline truncate max-w-[100px] xs:max-w-[130px] sm:max-w-none shrink-0"
+          className="font-bold text-[clamp(0.9rem,1.8vw,1.25rem)] tracking-tight text-black dark:text-white select-none no-underline truncate max-w-[110px] sm:max-w-[200px] md:max-w-none shrink-0"
         >
           {dict.brand.name}
         </Link>

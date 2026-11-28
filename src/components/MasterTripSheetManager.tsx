@@ -79,7 +79,7 @@ const DEFAULT_SHEET_COLUMNS: SheetColumnDef[] = [
   { column_key: 'loss', label: 'Loss', data_type: 'currency', sort_order: 26, is_default: true },
 ];
 
-type PeriodPreset = 'all' | 'month' | '3months' | 'custom';
+type PeriodPreset = 'all' | 'month' | '3months' | 'date' | 'custom';
 
 function normalizeVeh(v?: string): string {
   return (v || '').replace(/\s+/g, '').trim().toUpperCase();
@@ -137,6 +137,7 @@ export function MasterTripSheetManager() {
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [singleDate, setSingleDate] = useState('');
 
   // Insert Column modal
   const [isInsertColOpen, setIsInsertColOpen] = useState(false);
@@ -168,16 +169,24 @@ export function MasterTripSheetManager() {
     if (preset === 'all') {
       setFromDate('');
       setToDate('');
+      setSingleDate('');
     } else if (preset === 'month') {
       const start = new Date(today.getFullYear(), today.getMonth(), 1);
       setFromDate(formatDDMMYYYY(start));
       setToDate(todayStr);
+      setSingleDate('');
     } else if (preset === '3months') {
       const start = new Date(today.getFullYear(), today.getMonth() - 3, today.getDate());
       setFromDate(formatDDMMYYYY(start));
       setToDate(todayStr);
+      setSingleDate('');
+    } else if (preset === 'date') {
+      const target = singleDate || todayStr;
+      setSingleDate(target);
+      setFromDate(target);
+      setToDate(target);
     }
-  }, []);
+  }, [singleDate]);
 
   const fetchAllFromSupabase = useCallback(async () => {
     setLoading(true);
@@ -1252,6 +1261,8 @@ export function MasterTripSheetManager() {
         ? 'This Month'
         : periodPreset === '3months'
         ? 'Last 3 Months'
+        : periodPreset === 'date'
+        ? `Date: ${singleDate || fromDate || 'Selected Date'}`
         : `${fromDate || 'Start'} to ${toDate || 'End'}`;
     const vehText = vehicleFilter ? `Vehicle: ${vehicleFilter}` : 'All Vehicles';
     const searchText = searchQuery.trim() ? `Search: "${searchQuery.trim()}"` : '';
@@ -1314,15 +1325,15 @@ export function MasterTripSheetManager() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-2 border-b border-gray-200 dark:border-zinc-800 no-print">
-        <div>
-          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
-            <FileSpreadsheet className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-            <span>Master Trip Sheet (Excel Ledger)</span>
+      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2.5 sm:gap-3 pb-2.5 border-b border-gray-200 dark:border-zinc-800 no-print">
+        <div className="min-w-0">
+          <h2 className="text-[clamp(1.1rem,2.2vw,1.5rem)] font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+            <FileSpreadsheet className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="truncate">Master Trip Sheet (Excel Ledger)</span>
           </h2>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-zinc-400 mt-1">
+          <p className="text-[11px] sm:text-xs md:text-sm text-gray-500 dark:text-zinc-400 mt-0.5">
             Live SQL database spreadsheet combining Invoices, Fuel, Maintenance, Expenses, and Driver Salaries
           </p>
         </div>
@@ -1446,13 +1457,14 @@ export function MasterTripSheetManager() {
               { id: 'all', label: 'All Time' },
               { id: 'month', label: 'This Month' },
               { id: '3months', label: '3 Months' },
+              { id: 'date', label: 'Custom Date' },
               { id: 'custom', label: 'Custom Range' },
             ].map((p) => (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => applyPeriod(p.id as PeriodPreset)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer ${
                   periodPreset === p.id
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-300'
@@ -1463,18 +1475,44 @@ export function MasterTripSheetManager() {
             ))}
           </div>
 
-          <span className="text-xs font-mono font-semibold text-gray-500 dark:text-zinc-400">
+          <span className="text-[11px] sm:text-xs font-mono font-semibold text-gray-500 dark:text-zinc-400">
             Showing {filteredRows.length} {filteredRows.length === 1 ? 'row' : 'rows'} &middot; {columns.length} columns
           </span>
         </div>
 
+        {periodPreset === 'date' && (
+          <div className="pt-2 border-t border-gray-100 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-end gap-2.5 sm:gap-3">
+            <div className="w-full sm:w-52">
+              <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">Select Custom Date</label>
+              <CustomDatePicker
+                value={singleDate}
+                onChange={(val) => {
+                  setSingleDate(val);
+                  setFromDate(val);
+                  setToDate(val);
+                }}
+                placeholder="Choose a Date"
+              />
+            </div>
+            {singleDate && (
+              <button
+                type="button"
+                onClick={() => applyPeriod('all')}
+                className="px-3 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 text-xs font-semibold text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 cursor-pointer self-start sm:self-auto"
+              >
+                Reset Date
+              </button>
+            )}
+          </div>
+        )}
+
         {periodPreset === 'custom' && (
-          <div className="pt-2 border-t border-gray-100 dark:border-zinc-800 flex flex-wrap items-center gap-3">
-            <div className="w-44">
+          <div className="pt-2 border-t border-gray-100 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-end gap-2.5 sm:gap-3">
+            <div className="w-full sm:w-48">
               <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">From Date</label>
               <CustomDatePicker value={fromDate} onChange={(val) => setFromDate(val)} placeholder="Start Date" />
             </div>
-            <div className="w-44">
+            <div className="w-full sm:w-48">
               <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">To Date</label>
               <CustomDatePicker value={toDate} onChange={(val) => setToDate(val)} placeholder="End Date" />
             </div>
@@ -1502,11 +1540,11 @@ export function MasterTripSheetManager() {
             </p>
           </div>
         ) : (
-          <div className="overflow-auto max-h-[68dvh]">
-            <table className="w-full border-collapse text-xs">
+          <div className="overflow-auto min-h-[260px] max-h-[calc(100dvh-19rem)] sm:max-h-[calc(100dvh-17rem)] lg:max-h-[calc(100dvh-15.5rem)]">
+            <table className="w-full border-collapse text-[11px] sm:text-xs">
               <thead className="sticky top-0 z-20">
                 <tr className="bg-gray-100 dark:bg-zinc-800 border-b-2 border-gray-300 dark:border-zinc-700">
-                  <th className="sticky left-0 z-30 bg-gray-200 dark:bg-zinc-800 border-r border-gray-300 dark:border-zinc-700 py-2.5 px-2.5 text-center font-mono font-bold text-gray-600 dark:text-zinc-300 w-10">
+                  <th className="sticky left-0 z-30 bg-gray-200 dark:bg-zinc-800 border-r border-gray-300 dark:border-zinc-700 py-2 sm:py-2.5 px-2 sm:px-2.5 text-center font-mono font-bold text-gray-600 dark:text-zinc-300 w-9 sm:w-10">
                     #
                   </th>
                   {columns.map((col) => {
@@ -1697,8 +1735,8 @@ export function MasterTripSheetManager() {
               </tbody>
 
               <tfoot className="sticky bottom-0 z-20">
-                <tr className="bg-gray-100 dark:bg-zinc-800 border-t-2 border-gray-300 dark:border-zinc-700 font-bold">
-                  <td className="sticky left-0 z-30 bg-gray-200 dark:bg-zinc-800 border-r border-gray-300 dark:border-zinc-700 py-2.5 px-2.5 text-center font-mono text-[10px] uppercase text-gray-700 dark:text-zinc-200">
+                <tr className="bg-gray-100 dark:bg-zinc-800 border-t-2 border-gray-300 dark:border-zinc-700 font-bold text-[11px] sm:text-xs">
+                  <td className="sticky left-0 z-30 bg-gray-200 dark:bg-zinc-800 border-r border-gray-300 dark:border-zinc-700 py-2 sm:py-2.5 px-2 sm:px-2.5 text-center font-mono text-[10px] uppercase text-gray-700 dark:text-zinc-200">
                     SUM
                   </td>
                   {columns.map((col) => {
