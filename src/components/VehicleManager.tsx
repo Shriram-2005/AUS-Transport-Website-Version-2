@@ -894,7 +894,7 @@ export function VehicleManager() {
           ADD VEHICLE MODAL
       ========================================================================= */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-200 dark:border-zinc-800">
               <h3 className="text-base font-bold text-gray-900 dark:text-zinc-100 flex items-center gap-2">
@@ -963,7 +963,7 @@ export function VehicleManager() {
           EDIT VEHICLE MODAL
       ========================================================================= */}
       {editingVehicle && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-200 dark:border-zinc-800">
               <h3 className="text-base font-bold text-gray-900 dark:text-zinc-100 flex items-center gap-2">
@@ -1030,7 +1030,7 @@ export function VehicleManager() {
           QUICK UPDATE KM MODAL
       ========================================================================= */}
       {quickKmVehicle && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-sm w-full shadow-2xl p-6 relative">
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-200 dark:border-zinc-800">
               <h3 className="text-base font-bold text-gray-900 dark:text-zinc-100 flex items-center gap-2">
@@ -1095,7 +1095,7 @@ export function VehicleManager() {
           DELETE CONFIRMATION MODAL
       ========================================================================= */}
       {deletingVehicle && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-sm w-full shadow-2xl p-6 relative text-center">
             <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto mb-3">
               <AlertTriangle className="w-6 h-6" />

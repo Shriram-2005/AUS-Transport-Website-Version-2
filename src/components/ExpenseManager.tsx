@@ -1317,7 +1317,7 @@ export function ExpenseManager() {
           ADD / EDIT EXPENSE MODAL
       ========================================================================= */}
       {(isAddModalOpen || editingEntry) && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full shadow-2xl p-6 relative space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2.5">
@@ -1510,7 +1510,7 @@ export function ExpenseManager() {
           VIEW ALL EXPENSES HISTORY MODAL
       ========================================================================= */}
       {historyTarget && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 overflow-y-auto animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 overflow-y-auto animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-4xl w-full shadow-2xl p-6 relative my-8 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2.5">
@@ -1635,7 +1635,7 @@ export function ExpenseManager() {
           STATEMENT (PDF) GENERATOR MODAL
       ========================================================================= */}
       {statementTarget && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full shadow-2xl p-6 relative space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2.5">
@@ -1768,7 +1768,7 @@ export function ExpenseManager() {
       {activeEntryMenu !== null && (
         <>
           <div
-            className="fixed inset-0 z-[9998] cursor-default bg-transparent"
+            className="fixed inset-0 !m-0 z-[9998] cursor-default bg-transparent"
             onClick={(e) => {
               e.stopPropagation();
               setActiveEntryMenu(null);
@@ -1821,7 +1821,7 @@ export function ExpenseManager() {
           DELETE CONFIRMATION MODAL
       ========================================================================= */}
       {deletingEntry && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-md w-full shadow-2xl p-6 relative space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900 flex items-center justify-center text-red-600">

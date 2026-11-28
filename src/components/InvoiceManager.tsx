@@ -6439,7 +6439,7 @@ export function InvoiceManager() {
 
       {/* MOVE TRIP TO EXISTING INVOICE MODAL */}
       {tripToMove !== null && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 max-w-lg w-full shadow-2xl max-h-[92dvh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-zinc-800">
@@ -6708,7 +6708,7 @@ export function InvoiceManager() {
 
       {/* MOVE TRIP TO NEW INVOICE MODAL */}
       {tripToMoveToNew !== null && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 max-w-lg w-full shadow-2xl max-h-[92dvh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-zinc-800">
@@ -6917,7 +6917,7 @@ export function InvoiceManager() {
         <>
           {/* Transparent Backdrop to dismiss on click outside */}
           <div
-            className="fixed inset-0 z-[9998] cursor-default bg-transparent"
+            className="fixed inset-0 !m-0 z-[9998] cursor-default bg-transparent"
             onClick={(e) => {
               e.stopPropagation();
               setActiveTripMenu(null);
@@ -7014,7 +7014,7 @@ export function InvoiceManager() {
 
       {/* TRIP DELETE WARNING CONFIRMATION MODAL */}
       {tripToDelete !== null && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 max-w-md w-full shadow-2xl">
             <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center mb-4">
               <AlertTriangle className="w-6 h-6" />
@@ -7053,7 +7053,7 @@ export function InvoiceManager() {
 
       {/* EDIT TDS PERCENTAGE MODAL */}
       {tdsModalBill !== null && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+        <div className="fixed inset-0 !m-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 max-w-md w-full shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
@@ -7154,7 +7154,7 @@ export function InvoiceManager() {
       {/* PAYMENT RECEIVED DATE MODAL */}
       {paymentModalBill && (
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 !m-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
           onClick={() => setPaymentModalBill(null)}
         >
           <div
