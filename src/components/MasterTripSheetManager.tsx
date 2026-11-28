@@ -18,12 +18,11 @@ import {
   Check,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { BillData, getBillTdsRate, getStoredInvoices } from '@/lib/invoices';
-import { FuelEntry, getStoredFuelEntries } from '@/lib/fuel';
-import { MaintenanceEntry, getStoredMaintenanceEntries } from '@/lib/maintenance';
-import { ExpenseEntry, isTollExpense, getStoredExpenses } from '@/lib/expenses';
-import { Driver, getStoredDrivers } from '@/lib/drivers';
-import { getStoredVehicles } from '@/lib/vehicles';
+import { BillData, getBillTdsRate } from '@/lib/invoices';
+import { FuelEntry } from '@/lib/fuel';
+import { MaintenanceEntry } from '@/lib/maintenance';
+import { ExpenseEntry, isTollExpense } from '@/lib/expenses';
+import { Driver } from '@/lib/drivers';
 import { isDateInRange, parseDateToTimestamp } from '@/lib/profitAndLoss';
 import { CustomDatePicker } from './CustomDatePicker';
 import { EditableSelectDropdown } from './EditableSelectDropdown';
@@ -165,31 +164,32 @@ export function MasterTripSheetManager() {
       ]);
 
       const vehSet = new Set<string>();
+      const errors: string[] = [];
 
-      if (!vRes.error && vRes.data) {
+      if (vRes.error) errors.push(`vehicles: ${vRes.error.message}`);
+      else if (vRes.data) {
         vRes.data.forEach((v: any) => {
           const reg = (v.registration_number || '').trim().toUpperCase();
           if (reg) vehSet.add(reg);
         });
-      } else {
-        getStoredVehicles().forEach((v) => {
-          if (v.registrationNumber) vehSet.add(v.registrationNumber.trim().toUpperCase());
-        });
       }
 
-      if (!iRes.error && iRes.data) {
+      if (iRes.error) errors.push(`invoices: ${iRes.error.message}`);
+      else if (iRes.data) {
         const mappedBills: RawInvoiceRecord[] = iRes.data.map((item: any) => {
           const consignorAddr =
-            item.consignor?.address ||
+            item.branch ||
             item.raw_data?.branch ||
-            'Nellakottai Hatcheries, Dindugul DT. TN.';
+            item.consignor?.address ||
+            '';
           if (item.vehicle_number) vehSet.add(String(item.vehicle_number).trim().toUpperCase());
 
+          const sqlTrips = Array.isArray(item.trips) ? item.trips : [];
           const rawTrips =
-            item.raw_data && Array.isArray(item.raw_data.trips) && item.raw_data.trips.length > 0
-              ? item.raw_data.trips
-              : Array.isArray(item.trips)
-              ? item.trips
+            sqlTrips.length > 0
+              ? sqlTrips
+              : Array.isArray(item.raw_data?.trips)
+              ? item.raw_data.trips.slice(0, item.raw_data.visibleTrips ?? item.raw_data.trips.length)
               : [];
 
           if (item.raw_data) {
@@ -199,8 +199,9 @@ export function MasterTripSheetManager() {
               billNumber: item.bill_number,
               date: item.bill_date,
               vehicleNumber: item.vehicle_number,
+              branch: item.branch || item.raw_data.branch || '',
               trips: rawTrips,
-              visibleTrips: item.raw_data.visibleTrips ?? rawTrips.length,
+              visibleTrips: rawTrips.length,
               status: item.payment_status || item.raw_data.status || 'unpaid',
               consignorAddress: consignorAddr,
             };
@@ -210,8 +211,9 @@ export function MasterTripSheetManager() {
             billNumber: item.bill_number,
             date: item.bill_date,
             vehicleNumber: item.vehicle_number,
+            branch: item.branch || '',
             activeTrip: 1,
-            visibleTrips: rawTrips.length || 1,
+            visibleTrips: rawTrips.length,
             trips: rawTrips,
             keralaRtoEnabled: item.expenses?.hasRto ?? false,
             keralaRtoMultiplier: item.expenses?.rtoMultiplier ?? 0,
@@ -224,11 +226,10 @@ export function MasterTripSheetManager() {
           };
         });
         setBills(mappedBills);
-      } else {
-        setBills(getStoredInvoices());
       }
 
-      if (!fRes.error && fRes.data) {
+      if (fRes.error) errors.push(`fuel_entries: ${fRes.error.message}`);
+      else if (fRes.data) {
         setFuelEntries(
           fRes.data.map((f: any) => {
             const v = (f.vehicle_number || '').trim().toUpperCase();
@@ -246,11 +247,10 @@ export function MasterTripSheetManager() {
             };
           })
         );
-      } else {
-        setFuelEntries(getStoredFuelEntries());
       }
 
-      if (!mRes.error && mRes.data) {
+      if (mRes.error) errors.push(`maintenance_entries: ${mRes.error.message}`);
+      else if (mRes.data) {
         setMaintenanceEntries(
           mRes.data.map((m: any) => {
             const v = (m.vehicle_number || '').trim().toUpperCase();
@@ -268,11 +268,10 @@ export function MasterTripSheetManager() {
             };
           })
         );
-      } else {
-        setMaintenanceEntries(getStoredMaintenanceEntries());
       }
 
-      if (!eRes.error && eRes.data) {
+      if (eRes.error) errors.push(`expense_entries: ${eRes.error.message}`);
+      else if (eRes.data) {
         setExpenses(
           eRes.data.map((e: any) => {
             const v = (e.vehicle_number || 'GENERAL').trim().toUpperCase();
@@ -290,11 +289,10 @@ export function MasterTripSheetManager() {
             };
           })
         );
-      } else {
-        setExpenses(getStoredExpenses());
       }
 
-      if (!dRes.error && dRes.data) {
+      if (dRes.error) errors.push(`drivers: ${dRes.error.message}`);
+      else if (dRes.data) {
         setDrivers(
           dRes.data.map((d: any) => ({
             id: d.id,
@@ -305,8 +303,10 @@ export function MasterTripSheetManager() {
             status: d.status || 'active',
           }))
         );
-      } else {
-        setDrivers(getStoredDrivers());
+      }
+
+      if (errors.length > 0) {
+        setDbError(`Supabase query error: ${errors.join(' | ')}`);
       }
 
       setVehiclesList(Array.from(vehSet).sort());
@@ -569,7 +569,7 @@ export function MasterTripSheetManager() {
       const fromPlace =
         (bill.branch && bill.branch.trim()) ||
         (bill.consignorAddress && bill.consignorAddress.trim()) ||
-        'Nellakottai Hatcheries, Dindugul DT. TN.';
+        '';
 
       const rowKey = `${bill.billNumber}_${tripIndex}`;
 

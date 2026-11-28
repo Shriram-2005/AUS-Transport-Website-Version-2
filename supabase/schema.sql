@@ -651,7 +651,12 @@ LEFT JOIN (
     vehicle_number,
     SUM(
       ROUND(
-        COALESCE(net_amount, 0)::numeric * (1.0 - COALESCE(NULLIF(raw_data->>'tdsPercentage', '')::numeric, 1.0) / 100.0)
+        GREATEST(0,
+          COALESCE(net_amount, 0)::numeric - COALESCE((
+            SELECT SUM(CASE WHEN (t->>'tollEnabled')::boolean IS TRUE THEN COALESCE((t->>'tollAmount')::numeric, 0) ELSE 0 END)
+            FROM jsonb_array_elements(COALESCE(trips, '[]'::jsonb)) AS t
+          ), 0)
+        ) * (1.0 - COALESCE(NULLIF(raw_data->>'tdsPercentage', '')::numeric, 1.0) / 100.0)
       )
     ) AS total_freight
   FROM public.invoices
@@ -670,7 +675,6 @@ LEFT JOIN (
 LEFT JOIN (
   SELECT vehicle_number, SUM(COALESCE(amount, 0)::numeric) AS total_expenses
   FROM public.expense_entries
-  WHERE UPPER(category) NOT LIKE '%TOLL%' AND UPPER(category) NOT LIKE '%FASTAG%'
   GROUP BY vehicle_number
 ) e ON UPPER(TRIM(e.vehicle_number)) = UPPER(TRIM(v.registration_number));
 
@@ -685,7 +689,12 @@ SELECT
   (
     SELECT COALESCE(SUM(
       ROUND(
-        COALESCE(net_amount, 0)::numeric * (1.0 - COALESCE(NULLIF(raw_data->>'tdsPercentage', '')::numeric, 1.0) / 100.0)
+        GREATEST(0,
+          COALESCE(net_amount, 0)::numeric - COALESCE((
+            SELECT SUM(CASE WHEN (t->>'tollEnabled')::boolean IS TRUE THEN COALESCE((t->>'tollAmount')::numeric, 0) ELSE 0 END)
+            FROM jsonb_array_elements(COALESCE(trips, '[]'::jsonb)) AS t
+          ), 0)
+        ) * (1.0 - COALESCE(NULLIF(raw_data->>'tdsPercentage', '')::numeric, 1.0) / 100.0)
       )
     ), 0)
     FROM public.invoices
@@ -693,12 +702,17 @@ SELECT
   (SELECT COALESCE(SUM(total_amount), 0) FROM public.fuel_entries) AS total_fuel_cost,
   (SELECT COALESCE(SUM(liters), 0) FROM public.fuel_entries) AS total_fuel_liters,
   (SELECT COALESCE(SUM(amount), 0) FROM public.maintenance_entries) AS total_maintenance_cost,
-  (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries WHERE UPPER(category) NOT LIKE '%TOLL%' AND UPPER(category) NOT LIKE '%FASTAG%') AS total_expenses_cost,
+  (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries) AS total_expenses_cost,
   (
     (
       SELECT COALESCE(SUM(
         ROUND(
-          COALESCE(net_amount, 0)::numeric * (1.0 - COALESCE(NULLIF(raw_data->>'tdsPercentage', '')::numeric, 1.0) / 100.0)
+          GREATEST(0,
+            COALESCE(net_amount, 0)::numeric - COALESCE((
+              SELECT SUM(CASE WHEN (t->>'tollEnabled')::boolean IS TRUE THEN COALESCE((t->>'tollAmount')::numeric, 0) ELSE 0 END)
+              FROM jsonb_array_elements(COALESCE(trips, '[]'::jsonb)) AS t
+            ), 0)
+          ) * (1.0 - COALESCE(NULLIF(raw_data->>'tdsPercentage', '')::numeric, 1.0) / 100.0)
         )
       ), 0)
       FROM public.invoices
@@ -706,12 +720,12 @@ SELECT
     (
       (SELECT COALESCE(SUM(total_amount), 0) FROM public.fuel_entries) +
       (SELECT COALESCE(SUM(amount), 0) FROM public.maintenance_entries) +
-      (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries WHERE UPPER(category) NOT LIKE '%TOLL%' AND UPPER(category) NOT LIKE '%FASTAG%')
+      (SELECT COALESCE(SUM(amount), 0) FROM public.expense_entries)
     )
   ) AS net_operating_profit;
 
 -- ==============================================================================
--- 16. Master Trip Sheet (Excel Ledger) Dynamic Columns & Cell Overrides
+-- 18. Master Trip Sheet (Excel Ledger) Dynamic Columns & Cell Overrides
 -- ==============================================================================
 
 CREATE TABLE IF NOT EXISTS public.trip_sheet_columns (
