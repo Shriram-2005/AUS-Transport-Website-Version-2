@@ -551,7 +551,7 @@ export function ProfitAndLossManager() {
       {/* Top Header: Matching Vehicle, Driver, Fuel, Maintenance, and Expenses Managers */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-gray-200 dark:border-zinc-800">
         <div>
-          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
+          <h2 className="text-[clamp(1.15rem,2.2vw,1.5rem)] font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
             <TrendingUp className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
             <span>Profit & Loss Management</span>
           </h2>
@@ -562,7 +562,7 @@ export function ProfitAndLossManager() {
 
         <div className="flex items-center gap-3">
           {/* Search Box */}
-          <div className="relative w-52 sm:w-64">
+          <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 text-gray-400 dark:text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -635,11 +635,11 @@ export function ProfitAndLossManager() {
         {/* Custom Date Pickers row when 'custom' is active */}
         {activePreset === 'custom' && (
           <div className="pt-2 border-t border-gray-100 dark:border-zinc-800 flex flex-wrap items-center gap-3">
-            <div className="w-48">
+            <div className="w-full sm:w-48">
               <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">From Date</label>
               <CustomDatePicker value={fromDate} onChange={(val) => setFromDate(val)} placeholder="Start Date" />
             </div>
-            <div className="w-48">
+            <div className="w-full sm:w-48">
               <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">To Date</label>
               <CustomDatePicker value={toDate} onChange={(val) => setToDate(val)} placeholder="End Date" />
             </div>
@@ -655,7 +655,7 @@ export function ProfitAndLossManager() {
               {searchQuery.trim() ? `Filtered Net Performance (${filteredVehicles.length} ${filteredVehicles.length === 1 ? 'Vehicle' : 'Vehicles'})` : 'Total Fleet Net Performance'} ({activePreset === 'all' ? 'All Records' : `${fromDate || 'Start'} to ${toDate || 'Current'}`})
             </span>
             <div className="flex items-baseline gap-3">
-              <span className={`text-3xl font-black font-mono tracking-tight ${fleetPnl.netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+              <span className={`text-[clamp(1.35rem,2.5vw,1.875rem)] font-black font-mono tracking-tight ${fleetPnl.netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                 {fleetPnl.netProfit >= 0 ? '+' : ''}Rs.{fleetPnl.netProfit.toLocaleString('en-IN')}
               </span>
               <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase ${fleetPnl.netProfit >= 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'}`}>
@@ -754,7 +754,7 @@ export function ProfitAndLossManager() {
                       Net {isProfit ? 'Profit' : 'Loss'}
                     </span>
                     <div className="flex items-baseline justify-end gap-1 font-mono">
-                      <span className={`text-2xl font-black tracking-tight ${isProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                      <span className={`text-[clamp(1.15rem,2vw,1.5rem)] font-black tracking-tight ${isProfit ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                         {isProfit ? '+' : ''}Rs.{pnl.netProfit.toLocaleString('en-IN')}
                       </span>
                     </div>
@@ -815,7 +815,7 @@ export function ProfitAndLossManager() {
                 </div>
 
                 {/* Middle Financial Stats Bar */}
-                <div className="mt-4 pt-3 border-t border-gray-100 dark:border-zinc-800 grid grid-cols-5 gap-2 text-center text-xs">
+                <div className="mt-4 pt-3 border-t border-gray-100 dark:border-zinc-800 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
                   <div className="p-2 rounded-lg bg-gray-50/80 dark:bg-zinc-800/40">
                     <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-zinc-400" title="Freight Receivable Amount excluding Toll reimbursements">Revenue (Excl. Toll)</span>
                     <p className="font-mono font-bold text-gray-900 dark:text-zinc-100 text-xs">Rs.{pnl.revenue.toLocaleString('en-IN')}</p>
@@ -950,7 +950,7 @@ export function ProfitAndLossManager() {
             </div>
 
             {/* Table of all monthly records for this vehicle */}
-            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-zinc-800 max-h-[60vh] overflow-y-auto">
+            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-zinc-800 max-h-[calc(100dvh-14rem)] overflow-y-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-gray-100/80 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-800 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 sticky top-0 z-10">
                   <tr>

@@ -518,7 +518,7 @@ export function DriverManager() {
       {/* Top Header: Matching Vehicle, Fuel, Maintenance, and Expense Managers */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-gray-200 dark:border-zinc-800">
         <div>
-          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
+          <h2 className="text-[clamp(1.15rem,2.2vw,1.5rem)] font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
             <Users className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
             <span>Drivers Management</span>
           </h2>
@@ -557,7 +557,7 @@ export function DriverManager() {
           )}
 
           {/* Search Box */}
-          <div className="relative w-48 sm:w-60">
+          <div className="relative w-full sm:w-60">
             <Search className="w-4 h-4 text-gray-400 dark:text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -706,7 +706,7 @@ export function DriverManager() {
                       Total Salary
                     </span>
                     <div className="flex items-baseline justify-end gap-1 font-mono">
-                      <span className="text-2xl font-black text-gray-900 dark:text-zinc-100 tracking-tight">
+                      <span className="text-[clamp(1.15rem,2vw,1.5rem)] font-black text-gray-900 dark:text-zinc-100 tracking-tight">
                         ₹{Math.round(totalStats.totalSalary).toLocaleString('en-IN')}
                       </span>
                     </div>

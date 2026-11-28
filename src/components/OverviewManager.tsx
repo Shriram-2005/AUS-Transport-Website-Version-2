@@ -500,7 +500,7 @@ export function OverviewManager({ onNavigate }: OverviewManagerProps) {
       {/* Top Header: Matching all managers */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-gray-200 dark:border-zinc-800">
         <div>
-          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
+          <h2 className="text-[clamp(1.15rem,2.2vw,1.5rem)] font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
             <LayoutDashboard className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             <span>Fleet Executive Overview</span>
           </h2>
@@ -583,11 +583,11 @@ export function OverviewManager({ onNavigate }: OverviewManagerProps) {
         {/* Custom Date Pickers row when 'custom' is active */}
         {activePreset === 'custom' && (
           <div className="pt-2 border-t border-gray-100 dark:border-zinc-800 flex flex-wrap items-center gap-3">
-            <div className="w-48">
+            <div className="w-full sm:w-48">
               <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">From Date</label>
               <CustomDatePicker value={fromDate} onChange={(val) => setFromDate(val)} placeholder="Start Date" />
             </div>
-            <div className="w-48">
+            <div className="w-full sm:w-48">
               <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">To Date</label>
               <CustomDatePicker value={toDate} onChange={(val) => setToDate(val)} placeholder="End Date" />
             </div>
@@ -942,7 +942,7 @@ export function OverviewManager({ onNavigate }: OverviewManagerProps) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100 dark:border-zinc-800 text-center text-[11px]">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-gray-100 dark:border-zinc-800 text-center text-[11px]">
                     <div className="p-1.5 rounded-lg bg-gray-50 dark:bg-zinc-800/40">
                       <span className="text-[10px] text-gray-400 uppercase font-semibold">Revenue</span>
                       <p className="font-mono font-bold text-gray-800 dark:text-zinc-200">Rs.{vr.revenue.toLocaleString('en-IN')}</p>

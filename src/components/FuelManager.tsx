@@ -1069,7 +1069,7 @@ export function FuelManager() {
       {/* Top Header: Matching VehicleManager & DriverManager with clear prominent font sizing */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-gray-200 dark:border-zinc-800">
         <div>
-          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
+          <h2 className="text-[clamp(1.15rem,2.2vw,1.5rem)] font-extrabold text-gray-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
             <Fuel className="w-6 h-6 text-amber-600 dark:text-amber-400" />
             <span>Fuel Management</span>
           </h2>
@@ -1108,7 +1108,7 @@ export function FuelManager() {
           )}
 
           {/* Search Box */}
-          <div className="relative w-48 sm:w-60">
+          <div className="relative w-full sm:w-60">
             <Search className="w-4 h-4 text-gray-400 dark:text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -1257,7 +1257,7 @@ export function FuelManager() {
                       Total Fuel Cost
                     </span>
                     <div className="flex items-baseline justify-end gap-1 font-mono">
-                      <span className="text-2xl font-black text-gray-900 dark:text-zinc-100 tracking-tight">
+                      <span className="text-[clamp(1.15rem,2vw,1.5rem)] font-black text-gray-900 dark:text-zinc-100 tracking-tight">
                         Rs.{Math.round(stats.totalAmount).toLocaleString('en-IN')}
                       </span>
                     </div>
@@ -1535,11 +1535,11 @@ export function FuelManager() {
 
           {mileagePeriod === 'custom' && (
             <div className="px-4 sm:px-5 py-3 bg-gray-50/70 dark:bg-zinc-800/30 border-b border-gray-200 dark:border-zinc-800 flex flex-wrap items-center gap-3">
-              <div className="w-44">
+              <div className="w-full sm:w-48">
                 <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">From Date</label>
                 <CustomDatePicker value={mileageFromDate} onChange={(val) => setMileageFromDate(val)} placeholder="Start Date" />
               </div>
-              <div className="w-44">
+              <div className="w-full sm:w-48">
                 <label className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 block">To Date</label>
                 <CustomDatePicker value={mileageToDate} onChange={(val) => setMileageToDate(val)} placeholder="End Date" />
               </div>
@@ -1668,7 +1668,7 @@ export function FuelManager() {
       ========================================================================= */}
       {(isAddModalOpen || editingEntry) && (
         <div className="fixed inset-0 !m-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full shadow-2xl p-6 relative space-y-4 max-h-[92dvh] overflow-y-auto">
+          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full shadow-2xl p-4 sm:p-6 relative space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 flex items-center justify-center text-amber-600 dark:text-amber-400">
@@ -1927,7 +1927,7 @@ export function FuelManager() {
             </div>
 
             {/* Table of all entries for this vehicle */}
-            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-zinc-800 max-h-[60vh] overflow-y-auto">
+            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-zinc-800 max-h-[calc(100dvh-14rem)] overflow-y-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-gray-100/80 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-800 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400 sticky top-0 z-10">
                   <tr>

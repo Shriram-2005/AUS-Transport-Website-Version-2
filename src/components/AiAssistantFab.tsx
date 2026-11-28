@@ -741,7 +741,7 @@ export function AiAssistantFab() {
                 }
               : undefined
           }
-          className="fixed bottom-4 sm:bottom-auto left-4 sm:left-auto right-4 sm:right-auto z-50 w-[calc(100vw-2rem)] sm:w-[460px] h-[620px] max-h-[85vh] rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200"
+          className="fixed bottom-4 sm:bottom-auto left-4 sm:left-auto right-4 sm:right-auto z-50 w-[calc(100vw-2rem)] sm:w-[min(460px,92vw)] h-[min(620px,82dvh)] max-h-[85dvh] rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200"
         >
           {/* Header */}
           <div className="px-5 py-3.5 border-b border-gray-100 dark:border-zinc-800 bg-gradient-to-r from-blue-50/70 via-indigo-50/30 to-transparent dark:from-zinc-900 dark:to-zinc-900/40 flex items-center justify-between shrink-0">

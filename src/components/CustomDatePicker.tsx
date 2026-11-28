@@ -207,7 +207,7 @@ export function CustomDatePicker({
           role="dialog"
           aria-label="Date Picker Calendar"
           className="
-            absolute z-50 mt-1.5 w-72 p-3 rounded-xl shadow-2xl border
+            absolute z-50 mt-1.5 w-72 max-w-[calc(100vw-2rem)] p-3 rounded-xl shadow-2xl border
             bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800
             text-gray-900 dark:text-zinc-100
             animate-in fade-in-0 zoom-in-95 duration-150
