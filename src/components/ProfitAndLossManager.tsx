@@ -158,13 +158,23 @@ export function ProfitAndLossManager() {
       const { data: iData, error: iError } = await supabase.from('invoices').select('*');
       if (!iError && iData) {
         setBills(iData.map((item: any) => {
-          if (item.raw_data && item.raw_data.trips) {
+          const sqlTrips = Array.isArray(item.trips) ? item.trips : [];
+          const rawTrips =
+            sqlTrips.length > 0
+              ? sqlTrips
+              : Array.isArray(item.raw_data?.trips)
+              ? item.raw_data.trips.slice(0, item.raw_data.visibleTrips ?? item.raw_data.trips.length)
+              : [];
+
+          if (item.raw_data) {
             return {
               ...item.raw_data,
               id: item.id,
               billNumber: item.bill_number,
               date: item.bill_date,
               vehicleNumber: item.vehicle_number,
+              trips: rawTrips,
+              visibleTrips: rawTrips.length,
               status: item.payment_status || item.raw_data.status || 'unpaid',
             };
           }
@@ -174,15 +184,15 @@ export function ProfitAndLossManager() {
             date: item.bill_date,
             vehicleNumber: item.vehicle_number,
             activeTrip: 1,
-            visibleTrips: 1,
-            trips: [],
-            keralaRtoEnabled: false,
-            keralaRtoMultiplier: 0,
-            keralaRtoAmount: 0,
-            dieselAvgRate: 0,
+            visibleTrips: rawTrips.length,
+            trips: rawTrips,
+            keralaRtoEnabled: item.expenses?.hasRto ?? false,
+            keralaRtoMultiplier: item.expenses?.rtoMultiplier ?? 0,
+            keralaRtoAmount: item.expenses?.rtoExpense ?? 0,
+            dieselAvgRate: item.expenses?.dieselAvgRate ?? 0,
             rupeesInWordsMode: 'auto',
-            rupeesInWordsText: '',
-            status: 'unpaid',
+            rupeesInWordsText: item.amount_in_words || '',
+            status: item.payment_status === 'Paid' ? 'paid' : 'unpaid',
           };
         }));
       }

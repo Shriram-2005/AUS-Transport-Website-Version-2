@@ -18,7 +18,7 @@ import {
   Check,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { BillData, parseMonthFromDate } from '@/lib/invoices';
+import { BillData, getBillTdsRate, parseMonthFromDate } from '@/lib/invoices';
 import { FuelEntry } from '@/lib/fuel';
 import { MaintenanceEntry } from '@/lib/maintenance';
 import { ExpenseEntry } from '@/lib/expenses';
@@ -615,9 +615,21 @@ export function MasterTripSheetManager() {
 
       const freightPerKm = Number(trip.rate) || 0;
       const freightAmount = Math.round(runningKm * freightPerKm); // Excluding toll expenses
-      const billAmount = freightAmount + tollGateExp; // Amount billed to company including toll expenses
+      const billTripsCount = Math.max(
+        1,
+        (bill.trips || []).slice(0, bill.visibleTrips ?? bill.trips?.length ?? 0).filter((t) => t.enabled !== false).length
+      );
+      const billRtoTotal =
+        bill.keralaRtoEnabled && (Number(bill.keralaRtoMultiplier) || 0) > 0
+          ? (Number(bill.keralaRtoMultiplier) || 0) * (Number(bill.keralaRtoAmount) || 0)
+          : 0;
+      const rtoPerTrip = billRtoTotal / billTripsCount;
+      const tdsRate = getBillTdsRate(bill);
 
-      const net = freightAmount - totalExpenses;
+      const billAmount = Math.round(freightAmount + tollGateExp + rtoPerTrip); // Amount billed to company including toll expenses
+      const pnlRevenue = Math.round((freightAmount + rtoPerTrip) * (1 - tdsRate / 100)); // Exact P&L revenue (excl. toll, after TDS)
+
+      const net = pnlRevenue - totalExpenses;
       const profit = net >= 0 ? net : 0;
       const loss = net < 0 ? Math.abs(net) : 0;
 

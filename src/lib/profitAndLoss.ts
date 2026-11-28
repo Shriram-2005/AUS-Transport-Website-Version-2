@@ -179,46 +179,61 @@ export function calculateVehiclePnl(
   let totalTripCount = 0;
   let totalDriverSalary = 0;
 
-  // 1. Process Invoices (Revenue and Driver Salaries for this vehicle)
+  // 1. Process Invoices per-trip by trip.date || bill.date (matching Master Trip Sheet date tracking)
   for (const bill of bills) {
     const billVehicleKey = normalizeVehicleKey(bill.vehicleNumber);
     if (cleanVehicleKey && billVehicleKey !== cleanVehicleKey) continue;
 
-    // Use bill.date from non-editable invoice header
-    const billDate = (bill.date || '').trim();
-    if (!isDateInRange(billDate, fromDate, toDate)) continue;
-
-    const m = getOrCreateMonth(billDate);
-
-    const billRev = calculateBillTotal(bill);
-    totalRevenue += billRev;
-    m.revenue += billRev;
-
     const visible = bill.visibleTrips ?? bill.trips?.length ?? 0;
-    const trips = (bill.trips || []).slice(0, visible);
+    const enabledTrips = (bill.trips || []).slice(0, visible).filter((t) => t.enabled !== false);
+    const billDate = (bill.date || '').trim();
+    const tdsRate = getBillTdsRate(bill);
+    const billRtoTotal =
+      bill.keralaRtoEnabled && (Number(bill.keralaRtoMultiplier) || 0) > 0
+        ? (Number(bill.keralaRtoMultiplier) || 0) * (Number(bill.keralaRtoAmount) || 0)
+        : 0;
 
-    for (const trip of trips) {
-      if (trip.enabled !== false) {
-        const runningKm = Math.max(0, (Number(trip.closingKm) || 0) - (Number(trip.startingKm) || 0));
-        totalKmRan += runningKm;
-        totalTripCount += 1;
-        m.totalKm += runningKm;
-        m.tripCount += 1;
+    if (enabledTrips.length === 0) {
+      if (!isDateInRange(billDate, fromDate, toDate)) continue;
+      const m = getOrCreateMonth(billDate);
+      const rtoRev = billRtoTotal * (1 - tdsRate / 100);
+      totalRevenue += rtoRev;
+      m.revenue += rtoRev;
+      continue;
+    }
 
-        // Driver salary for this trip
-        let driverRate = Number(trip.driverRate) || 0;
-        if (driverRate <= 0) {
-          if (trip.driverId && driverRateMap.has(String(trip.driverId))) {
-            driverRate = driverRateMap.get(String(trip.driverId)) || 0;
-          } else if (trip.driverName && driverRateMap.has(trip.driverName.trim().toLowerCase())) {
-            driverRate = driverRateMap.get(trip.driverName.trim().toLowerCase()) || 0;
-          }
+    const rtoPerTrip = billRtoTotal / enabledTrips.length;
+
+    for (const trip of enabledTrips) {
+      const tripDate = (trip.date || billDate).trim();
+      if (!isDateInRange(tripDate, fromDate, toDate)) continue;
+
+      const m = getOrCreateMonth(tripDate);
+      const runningKm = Math.max(0, (Number(trip.closingKm) || 0) - (Number(trip.startingKm) || 0));
+      const tripGrossExclToll = runningKm * (Number(trip.rate) || 0) + rtoPerTrip;
+      const tripNetRev = tripGrossExclToll * (1 - tdsRate / 100);
+
+      totalRevenue += tripNetRev;
+      m.revenue += tripNetRev;
+
+      totalKmRan += runningKm;
+      totalTripCount += 1;
+      m.totalKm += runningKm;
+      m.tripCount += 1;
+
+      // Driver salary for this trip
+      let driverRate = Number(trip.driverRate) || 0;
+      if (driverRate <= 0) {
+        if (trip.driverId && driverRateMap.has(String(trip.driverId))) {
+          driverRate = driverRateMap.get(String(trip.driverId)) || 0;
+        } else if (trip.driverName && driverRateMap.has(trip.driverName.trim().toLowerCase())) {
+          driverRate = driverRateMap.get(trip.driverName.trim().toLowerCase()) || 0;
         }
-
-        const tripSalary = runningKm * driverRate;
-        totalDriverSalary += tripSalary;
-        m.driverSalary += tripSalary;
       }
+
+      const tripSalary = runningKm * driverRate;
+      totalDriverSalary += tripSalary;
+      m.driverSalary += tripSalary;
     }
   }
 
