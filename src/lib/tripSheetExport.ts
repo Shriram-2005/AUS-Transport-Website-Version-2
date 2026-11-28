@@ -90,9 +90,24 @@ export async function exportMasterTripSheetToExcel({
     };
   });
 
-  // Track max width per column
-  const colWidths: number[] = headerValues.map((h) => Math.max(8, String(h).length + 4));
-  colWidths[0] = 6;
+  // Track max width per column using actual formatted lengths + breathable padding
+  const measureFormattedLength = (val: unknown, colDef: ExportColumnDef | null, extraPad = 5): number => {
+    if (val === undefined || val === null || val === '') return 0;
+    if (typeof val === 'number' && colDef) {
+      if (colDef.data_type === 'currency') {
+        return `Rs.${Math.round(val).toLocaleString('en-US')}`.length + extraPad;
+      }
+      if (colDef.column_key === 'mileage' || colDef.column_key === 'dieselQty') {
+        return val.toFixed(2).length + extraPad;
+      }
+      return val.toLocaleString('en-US').length + extraPad;
+    }
+    return String(val).length + extraPad;
+  };
+
+  const colWidths: number[] = headerValues.map((h, idx) =>
+    idx === 0 ? 8 : Math.max(14, String(h).length + 6)
+  );
 
   // Data rows (with optional Month Header rows)
   rows.forEach((row, rowIdx) => {
@@ -196,9 +211,9 @@ export async function exportMasterTripSheetToExcel({
           }
         }
 
-        const strLen = String(cell.value ?? '').length + 3;
-        if (strLen > colWidths[colNumber - 1]) {
-          colWidths[colNumber - 1] = Math.min(38, strLen);
+        const measured = measureFormattedLength(cell.value, colDef, 5);
+        if (measured > colWidths[colNumber - 1]) {
+          colWidths[colNumber - 1] = Math.min(45, measured);
         }
       }
 
@@ -246,6 +261,12 @@ export async function exportMasterTripSheetToExcel({
       else if (colDef.column_key === 'mileage' || colDef.column_key === 'dieselQty') cell.numFmt = '#,##0.00';
       else cell.numFmt = '#,##0';
     }
+    if (colNumber > 1) {
+      const measuredTotal = measureFormattedLength(cell.value, colDef, 6);
+      if (measuredTotal > colWidths[colNumber - 1]) {
+        colWidths[colNumber - 1] = Math.min(45, measuredTotal);
+      }
+    }
     cell.border = {
       top: { style: 'medium', color: { argb: 'FF475569' } },
       bottom: { style: 'double', color: { argb: 'FF0F172A' } },
@@ -254,9 +275,9 @@ export async function exportMasterTripSheetToExcel({
     };
   });
 
-  // Set column widths
+  // Set column widths with generous breathable room so numbers never show as ###
   colWidths.forEach((w, idx) => {
-    sheet.getColumn(idx + 1).width = Math.max(8, Math.min(38, w));
+    sheet.getColumn(idx + 1).width = idx === 0 ? 8 : Math.max(14, Math.min(45, w));
   });
 
   const buffer = await workbook.xlsx.writeBuffer();
